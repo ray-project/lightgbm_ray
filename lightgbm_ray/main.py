@@ -1,33 +1,30 @@
-from typing import Tuple, Dict, Any, List, Optional, Callable, Type, Union, Sequence
+from typing import Tuple, Dict, Any, List, Optional, Type, Union, Sequence
 
-from contextlib import closing, contextmanager
-from copy import deepcopy, copy
+from copy import deepcopy
 import time
 import logging
 import os
-import socket
 import threading
+
+import numpy as np
+import pandas as pd
 
 from lightgbm import LGBMModel, LGBMRanker
 from lightgbm.basic import _choose_param_value, _ConfigAliases
-from lightgbm.dask import _safe_call
 from lightgbm.basic import LightGBMError
 from lightgbm.callback import EarlyStopException
 
 import ray
 
 import xgboost as xgb
-from xgboost_ray.main import _RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, RayDataIter, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, _handle_queue, STATUS_FREQUENCY_S, RayActorError, ELASTIC_RESTART_DISABLED, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped
+from xgboost_ray.main import _RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, _handle_queue, STATUS_FREQUENCY_S, RayActorError, ELASTIC_RESTART_DISABLED, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data, _trigger_data_load
 from xgboost_ray import RayDMatrix
+
+from lightgbm_ray.util import find_free_port, lgbm_network_free
 
 logger = logging.getLogger(__name__)
 
 
-def find_free_port():
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
 
 
 def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
@@ -69,8 +66,8 @@ def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
 
     return param
 
-    data.update_matrix_properties(matrix)
-    return matrix
+    #data.update_matrix_properties(matrix)
+    #return matrix
 
 
 @ray.remote
@@ -79,7 +76,7 @@ class RayLightGBMActor(_RayXGBoostActor):
         self,
         rank: int,
         num_actors: int,
-        model_factory: Type[LGBMModel],
+        model_factory: Optional[Type[LGBMModel]] = None,
         queue: Optional[Queue] = None,
         stop_event: Optional[Event] = None,
         checkpoint_frequency: int = 5,
@@ -136,14 +133,17 @@ class RayLightGBMActor(_RayXGBoostActor):
             self._local_n[data] = len(param["data"])
         data.unload_data()  # Free object store
 
-        matrix = _get_data_dict(data, param).copy()
-        self._data[data] = matrix
+        d = _get_data_dict(data, param).copy()
+        self._data[data] = d
 
         self._distributed_callbacks.after_data_loading(self, data)
 
     def train(self, return_bst: bool, params: Dict[str, Any],
               dtrain: RayDMatrix, evals: Tuple[RayDMatrix, str], *args,
               **kwargs) -> Dict[str, Any]:
+        if self.model_factory is None:
+            raise ValueError("model_factory cannot be None for training")
+
         from lightgbm.basic import _LIB
 
         self._distributed_callbacks.before_train(self)
@@ -173,6 +173,18 @@ class RayLightGBMActor(_RayXGBoostActor):
         #         "the `label` argument when initializing `RayDMatrix()` "
         #         "for data you would like to train on.")
 
+        local_evals = []
+        local_eval_names = []
+        local_eval_sample_weights = []
+        local_eval_init_scores = []
+        for deval, name in evals:
+            if deval not in self._data:
+                self.load_data(deval)
+            local_evals.append((self._data[deval]["data"], self._data[deval]["label"]))
+            local_eval_names.append(name)
+            local_eval_sample_weights.append(self._data[deval]["weight"])
+            local_eval_init_scores.append(self._data[deval]["base_margin"])
+
         # if "callbacks" in kwargs:
         #     callbacks = kwargs["callbacks"] or []
         # else:
@@ -195,33 +207,40 @@ class RayLightGBMActor(_RayXGBoostActor):
         def _train():
             try:
                 model = self.model_factory(**local_params)
-                if is_ranker:
-                    # missing group arg
-                    model.fit(local_dtrain["data"],
-                              local_dtrain["label"],
-                              sample_weight=local_dtrain["weight"],
-                              init_score=local_dtrain["base_margin"],
-                              **kwargs)
-                else:
-                    model.fit(local_dtrain["data"],
-                              local_dtrain["label"],
-                              sample_weight=local_dtrain["weight"],
-                              init_score=local_dtrain["base_margin"],
-                              **kwargs)
+                with lgbm_network_free(_LIB):
+                    if is_ranker:
+                        # missing group arg
+                        model.fit(local_dtrain["data"],
+                                local_dtrain["label"],
+                                sample_weight=local_dtrain["weight"],
+                                init_score=local_dtrain["base_margin"],
+                                eval_set=local_evals,
+                                eval_names=local_eval_names,
+                                eval_sample_weight=local_eval_sample_weights,
+                                eval_init_score=local_eval_init_scores,
+                                **kwargs)
+                    else:
+                        model.fit(local_dtrain["data"],
+                                local_dtrain["label"],
+                                sample_weight=local_dtrain["weight"],
+                                init_score=local_dtrain["base_margin"],
+                                eval_set=local_evals,
+                                eval_names=local_eval_names,
+                                eval_sample_weight=local_eval_sample_weights,
+                                eval_init_score=local_eval_init_scores,
+                                **kwargs)
                 result_dict.update({
                     "bst": model,
                     "evals_result": model.evals_result_,
                     "train_n": self._local_n[dtrain]
                 })
-                _safe_call(_LIB.LGBM_NetworkFree())
             except EarlyStopException:
                 # Usually this should be caught by XGBoost core.
                 # Silent fail, will be raised as RayXGBoostTrainingStopped.
-                _safe_call(_LIB.LGBM_NetworkFree())
                 return
             except LightGBMError as e:
+                print(e)
                 error_dict.update({"exception": e})
-                _safe_call(_LIB.LGBM_NetworkFree())
                 return
 
         thread = threading.Thread(target=_train)
@@ -244,6 +263,27 @@ class RayLightGBMActor(_RayXGBoostActor):
             result_dict.pop("bst", None)
 
         return result_dict
+
+    def predict(self, model: LGBMModel, data: RayDMatrix, **kwargs):
+        self._distributed_callbacks.before_predict(self)
+
+        _set_omp_num_threads()
+
+        if data not in self._data:
+            self.load_data(data)
+        local_data = self._data[data]["data"]
+
+        if hasattr(model, "predict_proba"):
+            predictions = model.predict_proba(local_data, **kwargs)
+        else:
+            predictions = model.predict(local_data, **kwargs)
+
+        if predictions.ndim == 1:
+            callback_predictions = pd.Series(predictions)
+        else:
+            callback_predictions = pd.DataFrame(predictions)
+        self._distributed_callbacks.after_predict(self, callback_predictions)
+        return predictions
 
 
 def _create_actor(
@@ -269,38 +309,6 @@ def _create_actor(
             queue=queue,
             checkpoint_frequency=checkpoint_frequency,
             distributed_callbacks=distributed_callbacks)
-
-
-def _dask_train(data,
-                label,
-                params,
-                model_factory,
-                sample_weight=None,
-                init_score=None,
-                group=None,
-                **kwargs) -> LGBMModel:
-    params = deepcopy(params)
-
-    params = _choose_param_value(main_param_name="tree_learner",
-                                 params=params,
-                                 default_value="data")
-    allowed_tree_learners = {
-        'data', 'data_parallel', 'feature', 'feature_parallel', 'voting',
-        'voting_parallel'
-    }
-    if params["tree_learner"] not in allowed_tree_learners:
-        logger.warning(
-            'Parameter tree_learner set to %s, which is not allowed. Using "data" as default'
-            % params['tree_learner'])
-        params['tree_learner'] = 'data'
-
-    # Some passed-in parameters can be removed:
-    #   * 'num_machines': set automatically from Dask worker list
-    #   * 'num_threads': overridden to match nthreads on each Dask process
-    for param_alias in _ConfigAliases.get('num_machines', 'num_threads'):
-        if param_alias in params:
-            logger.warning(f"Parameter {param_alias} will be ignored.")
-            params.pop(param_alias)
 
 
 def _train(params: Dict,
@@ -585,7 +593,7 @@ def _train(params: Dict,
 
 def train(params: Dict,
           dtrain: RayDMatrix,
-          model_factory: Type[LGBMModel],
+          model_factory: Type[LGBMModel] = LGBMModel,
           num_boost_round: int = 10,
           *args,
           evals: Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix,
@@ -730,8 +738,10 @@ def train(params: Dict,
                                  default_value="cpu")
 
     allowed_tree_learners = {
-        'data', 'data_parallel', 'feature', 'feature_parallel', 'voting',
-        'voting_parallel'
+        'data', 'data_parallel', 
+        'voting','voting_parallel'
+        # not yet supported in LightGBM python API
+        #'feature', 'feature_parallel', 
     }
     if params["tree_learner"] not in allowed_tree_learners:
         logger.warning(
@@ -954,3 +964,131 @@ def train(params: Dict,
         additional_results.update(train_additional_results)
 
     return bst
+
+
+def _predict(model: LGBMModel, data: RayDMatrix, ray_params: RayParams,
+             **kwargs):
+    _assert_ray_support()
+
+    if not ray.is_initialized():
+        ray.init()
+
+    # Create remote actors
+    actors = [
+        _create_actor(
+            rank=i,
+            num_actors=ray_params.num_actors,
+            model_factory=None,
+            num_cpus_per_actor=ray_params.cpus_per_actor,
+            num_gpus_per_actor=ray_params.gpus_per_actor
+            if ray_params.gpus_per_actor >= 0 else 0,
+            resources_per_actor=ray_params.resources_per_actor,
+            distributed_callbacks=ray_params.distributed_callbacks)
+        for i in range(ray_params.num_actors)
+    ]
+    logger.info(f"[RayXGBoost] Created {len(actors)} remote actors.")
+
+    # Split data across workers
+    wait_load = []
+    for actor in actors:
+        wait_load.extend(_trigger_data_load(actor, data, []))
+
+    try:
+        ray.get(wait_load)
+    except Exception as exc:
+        logger.warning(f"Caught an error during prediction: {str(exc)}")
+        _shutdown(actors, force=True)
+        raise
+
+    # Put model into object store
+    model_ref = ray.put(model)
+
+    logger.info("[RayXGBoost] Starting XGBoost prediction.")
+
+    # Train
+    fut = [actor.predict.remote(model_ref, data, **kwargs) for actor in actors]
+
+    try:
+        actor_results = ray.get(fut)
+    except Exception as exc:
+        logger.warning(f"Caught an error during prediction: {str(exc)}")
+        _shutdown(actors=actors, force=True)
+        raise
+
+    _shutdown(actors=actors, force=False)
+
+    return combine_data(data.sharding, actor_results)
+
+def predict(model: LGBMModel,
+            data: RayDMatrix,
+            ray_params: Union[None, RayParams, Dict] = None,
+            _remote: Optional[bool] = None,
+            **kwargs) -> Optional[np.ndarray]:
+    """Distributed XGBoost predict via Ray.
+
+    This function will connect to a Ray cluster, create ``num_actors``
+    remote actors, send data shards to them, and have them predict labels
+    using an XGBoost booster model. The results are then combined and
+    returned.
+
+    Args:
+        model (xgb.Booster): Booster object to call for prediction.
+        data (RayDMatrix): Data object containing the prediction data.
+        ray_params (Union[None, RayParams, Dict]): Parameters to configure
+            Ray-specific behavior. See :class:`RayParams` for a list of valid
+            configuration parameters.
+        _remote (bool): Whether to run the driver process in a remote
+            function. This is enabled by default in Ray client mode.
+        **kwargs: Keyword arguments will be passed to the local
+            `xgb.predict()` calls.
+
+    Returns: ``np.ndarray`` containing the predicted labels.
+
+    """
+    os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
+
+    if _remote is None:
+        _remote = _is_client_connected() and \
+                  not is_session_enabled()
+
+    if not ray.is_initialized():
+        ray.init()
+
+    if _remote:
+        return ray.get(
+            ray.remote(num_cpus=0)(predict).remote(
+                model, data, ray_params, _remote=False, **kwargs))
+
+    _maybe_print_legacy_warning()
+
+    ray_params = _validate_ray_params(ray_params)
+
+    max_actor_restarts = ray_params.max_actor_restarts \
+        if ray_params.max_actor_restarts >= 0 else float("inf")
+    _assert_ray_support()
+
+    if not isinstance(data, RayDMatrix):
+        raise ValueError(
+            "The `data` argument passed to `train()` is not a RayDMatrix, "
+            "but of type {}. "
+            "\nFIX THIS by instantiating a RayDMatrix first: "
+            "`data = RayDMatrix(data=data)`.".format(type(data)))
+
+    tries = 0
+    while tries <= max_actor_restarts:
+        try:
+            return _predict(model, data, ray_params=ray_params, **kwargs)
+        except RayActorError:
+            if tries + 1 <= max_actor_restarts:
+                logger.warning(
+                    "A Ray actor died during prediction. Trying to restart "
+                    "prediction from scratch. "
+                    "Sleeping for 10 seconds for cleanup.")
+                time.sleep(10)
+            else:
+                raise RuntimeError(
+                    "A Ray actor died during prediction and the maximum "
+                    "number of retries ({}) is exhausted.".format(
+                        max_actor_restarts))
+            tries += 1
+    return None
