@@ -17,7 +17,7 @@ from lightgbm.callback import EarlyStopException
 import ray
 
 import xgboost as xgb
-from xgboost_ray.main import _RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, _handle_queue, STATUS_FREQUENCY_S, RayActorError, ELASTIC_RESTART_DISABLED, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data, _trigger_data_load
+from xgboost_ray.main import RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, _handle_queue, STATUS_FREQUENCY_S, RayActorError, ELASTIC_RESTART_DISABLED, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data, _trigger_data_load
 from xgboost_ray import RayDMatrix
 
 from lightgbm_ray.util import find_free_port, lgbm_network_free
@@ -70,8 +70,7 @@ def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
     #return matrix
 
 
-@ray.remote
-class RayLightGBMActor(_RayXGBoostActor):
+class RayLightGBMActor(RayXGBoostActor):
     def __init__(
         self,
         rank: int,
@@ -286,6 +285,10 @@ class RayLightGBMActor(_RayXGBoostActor):
         return predictions
 
 
+@ray.remote
+class _RemoteRayLightGBMActor(RayLightGBMActor):
+    pass
+
 def _create_actor(
     rank: int,
     num_actors: int,
@@ -298,7 +301,7 @@ def _create_actor(
     checkpoint_frequency: int = 5,
     distributed_callbacks: Optional[Sequence[DistributedCallback]] = None
 ) -> ActorHandle:
-    return RayLightGBMActor.options(
+    return _RemoteRayLightGBMActor.options(
         num_cpus=num_cpus_per_actor,
         num_gpus=num_gpus_per_actor,
         resources=resources_per_actor,

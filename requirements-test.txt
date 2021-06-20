@@ -8,4 +8,4 @@ pyarrow
 ray[tune]
 scikit-learn
 modin
-xgboost_ray
+xgboost_ray>=0.1.1
