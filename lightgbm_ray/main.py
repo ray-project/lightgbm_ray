@@ -17,14 +17,12 @@ from lightgbm.callback import EarlyStopException
 import ray
 
 import xgboost as xgb
-from xgboost_ray.main import RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, _handle_queue, STATUS_FREQUENCY_S, RayActorError, ELASTIC_RESTART_DISABLED, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data, _trigger_data_load
+from xgboost_ray.main import RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data, _trigger_data_load
 from xgboost_ray import RayDMatrix
 
 from lightgbm_ray.util import find_free_port, lgbm_network_free
 
 logger = logging.getLogger(__name__)
-
-
 
 
 def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
@@ -66,33 +64,34 @@ def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
 
     return param
 
-    #data.update_matrix_properties(matrix)
-    #return matrix
+    # data.update_matrix_properties(matrix)
+    # return matrix
 
 
 class RayLightGBMActor(RayXGBoostActor):
     def __init__(
-        self,
-        rank: int,
-        num_actors: int,
-        model_factory: Optional[Type[LGBMModel]] = None,
-        queue: Optional[Queue] = None,
-        stop_event: Optional[Event] = None,
-        checkpoint_frequency: int = 5,
-        distributed_callbacks: Optional[List[DistributedCallback]] = None,
-        network_params: Optional[dict] = None,
+            self,
+            rank: int,
+            num_actors: int,
+            model_factory: Optional[Type[LGBMModel]] = None,
+            queue: Optional[Queue] = None,
+            stop_event: Optional[Event] = None,
+            checkpoint_frequency: int = 5,
+            distributed_callbacks: Optional[List[DistributedCallback]] = None,
+            network_params: Optional[dict] = None,
     ):
-        self.network_params = {} if not network_params else network_params.copy(
-        )
+        self.network_params = {} if not network_params else \
+            network_params.copy()
         if "time_out" not in self.network_params:
             self.network_params["time_out"] = 120
         self.model_factory = model_factory
-        return super().__init__(rank=rank,
-                                num_actors=num_actors,
-                                queue=queue,
-                                stop_event=stop_event,
-                                checkpoint_frequency=checkpoint_frequency,
-                                distributed_callbacks=distributed_callbacks)
+        return super().__init__(
+            rank=rank,
+            num_actors=num_actors,
+            queue=queue,
+            stop_event=stop_event,
+            checkpoint_frequency=checkpoint_frequency,
+            distributed_callbacks=distributed_callbacks)
 
     def _save_checkpoint_callback(self):
         return
@@ -107,11 +106,11 @@ class RayLightGBMActor(RayXGBoostActor):
         return self.network_params.get("local_listen_port", None)
 
     def set_network_params(
-        self,
-        machines: str,
-        local_listen_port: int,
-        num_machines: int,
-        time_out: Optional[int] = None,
+            self,
+            machines: str,
+            local_listen_port: int,
+            num_machines: int,
+            time_out: Optional[int] = None,
     ):
         self.network_params["machines"] = machines
         self.network_params["local_listen_port"] = local_listen_port
@@ -138,8 +137,8 @@ class RayLightGBMActor(RayXGBoostActor):
         self._distributed_callbacks.after_data_loading(self, data)
 
     def train(self, return_bst: bool, params: Dict[str, Any],
-              dtrain: RayDMatrix, evals: Tuple[RayDMatrix, str], boost_rounds_left:int, *args,
-              **kwargs) -> Dict[str, Any]:
+              dtrain: RayDMatrix, evals: Tuple[RayDMatrix, str],
+              boost_rounds_left: int, *args, **kwargs) -> Dict[str, Any]:
         if self.model_factory is None:
             raise ValueError("model_factory cannot be None for training")
 
@@ -152,8 +151,8 @@ class RayLightGBMActor(RayXGBoostActor):
         local_params = _choose_param_value(
             main_param_name="num_threads",
             params=params,
-            default_value=num_threads if num_threads > 0 else sum(
-                num
+            default_value=num_threads if num_threads > 0 else
+            sum(num
                 for _, num in ray.worker.get_resource_ids().get("CPU", [])))
 
         # (yard1) todo add warning if num_threads < 2 (hangs)
@@ -181,7 +180,8 @@ class RayLightGBMActor(RayXGBoostActor):
         for deval, name in evals:
             if deval not in self._data:
                 self.load_data(deval)
-            local_evals.append((self._data[deval]["data"], self._data[deval]["label"]))
+            local_evals.append((self._data[deval]["data"],
+                                self._data[deval]["label"]))
             local_eval_names.append(name)
             local_eval_sample_weights.append(self._data[deval]["weight"])
             local_eval_init_scores.append(self._data[deval]["base_margin"])
@@ -214,25 +214,27 @@ class RayLightGBMActor(RayXGBoostActor):
                 with lgbm_network_free(_LIB):
                     if is_ranker:
                         # missing group arg
-                        model.fit(local_dtrain["data"],
-                                local_dtrain["label"],
-                                sample_weight=local_dtrain["weight"],
-                                init_score=local_dtrain["base_margin"],
-                                eval_set=local_evals,
-                                eval_names=local_eval_names,
-                                eval_sample_weight=local_eval_sample_weights,
-                                eval_init_score=local_eval_init_scores,
-                                **kwargs)
+                        model.fit(
+                            local_dtrain["data"],
+                            local_dtrain["label"],
+                            sample_weight=local_dtrain["weight"],
+                            init_score=local_dtrain["base_margin"],
+                            eval_set=local_evals,
+                            eval_names=local_eval_names,
+                            eval_sample_weight=local_eval_sample_weights,
+                            eval_init_score=local_eval_init_scores,
+                            **kwargs)
                     else:
-                        model.fit(local_dtrain["data"],
-                                local_dtrain["label"],
-                                sample_weight=local_dtrain["weight"],
-                                init_score=local_dtrain["base_margin"],
-                                eval_set=local_evals,
-                                eval_names=local_eval_names,
-                                eval_sample_weight=local_eval_sample_weights,
-                                eval_init_score=local_eval_init_scores,
-                                **kwargs)
+                        model.fit(
+                            local_dtrain["data"],
+                            local_dtrain["label"],
+                            sample_weight=local_dtrain["weight"],
+                            init_score=local_dtrain["base_margin"],
+                            eval_set=local_evals,
+                            eval_names=local_eval_names,
+                            eval_sample_weight=local_eval_sample_weights,
+                            eval_init_score=local_eval_init_scores,
+                            **kwargs)
                 result_dict.update({
                     "bst": model,
                     "evals_result": model.evals_result_,
@@ -293,17 +295,18 @@ class RayLightGBMActor(RayXGBoostActor):
 class _RemoteRayLightGBMActor(RayLightGBMActor):
     pass
 
+
 def _create_actor(
-    rank: int,
-    num_actors: int,
-    model_factory: Type[LGBMModel],
-    num_cpus_per_actor: int,
-    num_gpus_per_actor: int,
-    resources_per_actor: Optional[Dict] = None,
-    placement_group: Optional[PlacementGroup] = None,
-    queue: Optional[Queue] = None,
-    checkpoint_frequency: int = 5,
-    distributed_callbacks: Optional[Sequence[DistributedCallback]] = None
+        rank: int,
+        num_actors: int,
+        model_factory: Type[LGBMModel],
+        num_cpus_per_actor: int,
+        num_gpus_per_actor: int,
+        resources_per_actor: Optional[Dict] = None,
+        placement_group: Optional[PlacementGroup] = None,
+        queue: Optional[Queue] = None,
+        checkpoint_frequency: int = 5,
+        distributed_callbacks: Optional[Sequence[DistributedCallback]] = None
 ) -> ActorHandle:
     return _RemoteRayLightGBMActor.options(
         num_cpus=num_cpus_per_actor,
@@ -354,8 +357,8 @@ def _train(params: Dict,
         alias in params for alias in _ConfigAliases.get("local_listen_port"))
 
     # capture whether machines or its aliases were provided
-    machines_in_params = any(alias in params
-                             for alias in _ConfigAliases.get("machines"))
+    machines_in_params = any(
+        alias in params for alias in _ConfigAliases.get("machines"))
 
     if "n_jobs" in params:
         if params["n_jobs"] > cpus_per_actor:
@@ -450,8 +453,8 @@ def _train(params: Dict,
     logger.info("[RayLightGBM] Starting LightGBM training.")
 
     # Start Rabit tracker for gradient sharing
-    #rabit_process, env = _start_rabit_tracker(alive_actors)
-    #rabit_args = [("%s=%s" % item).encode() for item in env.items()]
+    # rabit_process, env = _start_rabit_tracker(alive_actors)
+    # rabit_args = [("%s=%s" % item).encode() for item in env.items()]
 
     # Load checkpoint if we have one. In that case we need to adjust the
     # number of training rounds.
@@ -600,18 +603,19 @@ def _train(params: Dict,
     return bst, evals_result, _training_state.additional_results
 
 
-def train(params: Dict,
-          dtrain: RayDMatrix,
-          model_factory: Type[LGBMModel] = LGBMModel,
-          num_boost_round: int = 10,
-          *args,
-          evals: Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix,
-                                                           str]] = (),
-          evals_result: Optional[Dict] = None,
-          additional_results: Optional[Dict] = None,
-          ray_params: Union[None, RayParams, Dict] = None,
-          _remote: Optional[bool] = None,
-          **kwargs) -> LGBMModel:
+def train(
+        params: Dict,
+        dtrain: RayDMatrix,
+        model_factory: Type[LGBMModel] = LGBMModel,
+        num_boost_round: int = 10,
+        *args,
+        evals: Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix, str]] = (
+        ),
+        evals_result: Optional[Dict] = None,
+        additional_results: Optional[Dict] = None,
+        ray_params: Union[None, RayParams, Dict] = None,
+        _remote: Optional[bool] = None,
+        **kwargs) -> LGBMModel:
     """Distributed XGBoost training via Ray.
 
     This function will connect to a Ray cluster, create ``num_actors``
@@ -675,12 +679,13 @@ def train(params: Dict,
         def _wrapped(*args, **kwargs):
             _evals_result = {}
             _additional_results = {}
-            bst = train(*args,
-                        model_factory=model_factory,
-                        num_boost_round=num_boost_round,
-                        evals_result=_evals_result,
-                        additional_results=_additional_results,
-                        **kwargs)
+            bst = train(
+                *args,
+                model_factory=model_factory,
+                num_boost_round=num_boost_round,
+                evals_result=_evals_result,
+                additional_results=_additional_results,
+                **kwargs)
             return bst, _evals_result, _additional_results
 
         # Make sure that train is called on the server node.
@@ -739,20 +744,17 @@ def train(params: Dict,
             and params["tree_method"] is not None
             and params["tree_method"].startswith("gpu"))
 
-    params = _choose_param_value(main_param_name="tree_learner",
-                                 params=params,
-                                 default_value="data")
+    params = _choose_param_value(
+        main_param_name="tree_learner", params=params, default_value="data")
 
-    params = _choose_param_value(main_param_name="device_type",
-                                 params=params,
-                                 default_value="cpu")
+    params = _choose_param_value(
+        main_param_name="device_type", params=params, default_value="cpu")
 
     allowed_tree_learners = {
-        'data', 'data_parallel', 
-        'voting','voting_parallel'
+        'data', 'data_parallel', 'voting', 'voting_parallel'
         # not yet supported in LightGBM python API
         # (as of ver 3.2.1)
-        # 'feature', 'feature_parallel', 
+        # 'feature', 'feature_parallel',
     }
     if params["tree_learner"] not in allowed_tree_learners:
         logger.warning(
@@ -760,7 +762,8 @@ def train(params: Dict,
             % params['tree_learner'])
         params['tree_learner'] = 'data'
 
-    for param_alias in _ConfigAliases.get('num_machines', 'num_threads', 'num_iterations', 'n_estimators'):
+    for param_alias in _ConfigAliases.get('num_machines', 'num_threads',
+                                          'num_iterations', 'n_estimators'):
         if param_alias in params:
             logger.warning(f"Parameter {param_alias} will be ignored.")
             params.pop(param_alias)
@@ -857,15 +860,16 @@ def train(params: Dict,
 
         logger.debug(f"Boost rounds left: {boost_rounds_left}")
 
-        training_state = _TrainingState(actors=actors,
-                                        queue=queue,
-                                        stop_event=stop_event,
-                                        checkpoint=checkpoint,
-                                        additional_results=current_results,
-                                        training_started_at=0.,
-                                        placement_group=pg,
-                                        failed_actor_ranks=start_actor_ranks,
-                                        pending_actors=pending_actors)
+        training_state = _TrainingState(
+            actors=actors,
+            queue=queue,
+            stop_event=stop_event,
+            checkpoint=checkpoint,
+            additional_results=current_results,
+            training_started_at=0.,
+            placement_group=pg,
+            failed_actor_ranks=start_actor_ranks,
+            pending_actors=pending_actors)
 
         try:
             bst, train_evals_result, train_additional_results = _train(
@@ -962,12 +966,13 @@ def train(params: Dict,
                 "({training_time_s:.2f} pure LightGBM training time).".format(
                     **train_additional_results))
 
-    _shutdown(actors=actors,
-              pending_actors=pending_actors,
-              queue=queue,
-              event=stop_event,
-              placement_group=pg,
-              force=False)
+    _shutdown(
+        actors=actors,
+        pending_actors=pending_actors,
+        queue=queue,
+        event=stop_event,
+        placement_group=pg,
+        force=False)
 
     if isinstance(evals_result, dict):
         evals_result.update(train_evals_result)
@@ -1029,6 +1034,7 @@ def _predict(model: LGBMModel, data: RayDMatrix, ray_params: RayParams,
     _shutdown(actors=actors, force=False)
 
     return combine_data(data.sharding, actor_results)
+
 
 def predict(model: LGBMModel,
             data: RayDMatrix,

@@ -16,7 +16,7 @@ from lightgbm_ray import RayParams, train, RayDMatrix, predict, RayShardingMode
 from lightgbm_ray.main import RayXGBoostTrainingError
 from xgboost_ray.callback import DistributedCallback
 
-from sklearn.utils import shuffle
+# from sklearn.utils import shuffle
 
 logging.getLogger("lightgbm_ray.main").setLevel(logging.DEBUG)
 
@@ -83,12 +83,12 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         ] * repeat)
         self.y = np.array([0, 1, 2, 3] * repeat)
 
-        #self.x, self.y = shuffle(self.x, self.y, random_state=1)
+        # self.x, self.y = shuffle(self.x, self.y, random_state=1)
 
         self.params = {
             "boosting": "gbdt",
             "nthread": 1,
-            #"max_depth": 2,
+            # "max_depth": 2,
             "objective": "multiclass",
             "num_class": 4,
             "random_state": 1,
