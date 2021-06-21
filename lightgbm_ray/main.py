@@ -138,7 +138,7 @@ class RayLightGBMActor(RayXGBoostActor):
         self._distributed_callbacks.after_data_loading(self, data)
 
     def train(self, return_bst: bool, params: Dict[str, Any],
-              dtrain: RayDMatrix, evals: Tuple[RayDMatrix, str], *args,
+              dtrain: RayDMatrix, evals: Tuple[RayDMatrix, str], boost_rounds_left:int, *args,
               **kwargs) -> Dict[str, Any]:
         if self.model_factory is None:
             raise ValueError("model_factory cannot be None for training")
@@ -155,6 +155,8 @@ class RayLightGBMActor(RayXGBoostActor):
             default_value=num_threads if num_threads > 0 else sum(
                 num
                 for _, num in ray.worker.get_resource_ids().get("CPU", [])))
+
+        # (yard1) todo add warning if num_threads < 2 (hangs)
 
         if "init_model" in kwargs:
             if isinstance(kwargs["init_model"], bytes):
@@ -198,11 +200,14 @@ class RayLightGBMActor(RayXGBoostActor):
         network_params = self.network_params
         local_params.update(network_params)
 
+        local_params["n_estimators"] = boost_rounds_left
+
         is_ranker = issubclass(self.model_factory, LGBMRanker)
 
         print(local_params)
 
         # We run xgb.train in a thread to be able to react to the stop event.
+
         def _train():
             try:
                 model = self.model_factory(**local_params)
@@ -238,7 +243,6 @@ class RayLightGBMActor(RayXGBoostActor):
                 # Silent fail, will be raised as RayXGBoostTrainingStopped.
                 return
             except LightGBMError as e:
-                print(e)
                 error_dict.update({"exception": e})
                 return
 
@@ -317,6 +321,7 @@ def _create_actor(
 def _train(params: Dict,
            dtrain: RayDMatrix,
            model_factory: Type[LGBMModel],
+           boost_rounds_left: int,
            *args,
            evals=(),
            ray_params: RayParams,
@@ -397,7 +402,7 @@ def _train(params: Dict,
         newly_created += 1
 
     alive_actors = sum(1 for a in _training_state.actors if a is not None)
-    logger.info(f"[RayXGBoost] Created {newly_created} new actors "
+    logger.info(f"[RayLightGBM] Created {newly_created} new actors "
                 f"({alive_actors} total actors). Waiting until actors "
                 f"are ready for training.")
 
@@ -442,7 +447,7 @@ def _train(params: Dict,
         _get_actor_alive_status(_training_state.actors, handle_actor_failure)
         raise RayActorError from exc
 
-    logger.info("[RayXGBoost] Starting XGBoost training.")
+    logger.info("[RayLightGBM] Starting LightGBM training.")
 
     # Start Rabit tracker for gradient sharing
     #rabit_process, env = _start_rabit_tracker(alive_actors)
@@ -451,14 +456,14 @@ def _train(params: Dict,
     # Load checkpoint if we have one. In that case we need to adjust the
     # number of training rounds.
     if _training_state.checkpoint.value:
-        kwargs["xgb_model"] = pickle.loads(_training_state.checkpoint.value)
+        kwargs["init_model"] = pickle.loads(_training_state.checkpoint.value)
         if _training_state.checkpoint.iteration == -1:
             # -1 means training already finished.
             logger.error(
                 "Trying to load continue from checkpoint, but the checkpoint"
                 "indicates training already finished. Returning last"
                 "checkpointed model instead.")
-            return kwargs["xgb_model"], {}, _training_state.additional_results
+            return kwargs["init_model"], {}, _training_state.additional_results
 
     # The callback_returns dict contains actor-rank indexed lists of
     # results obtained through the `put_queue` function, usually
@@ -493,6 +498,7 @@ def _train(params: Dict,
             params,
             dtrain,
             evals,
+            boost_rounds_left,
             *args,
             **kwargs) for i, actor in enumerate(live_actors)
     ]
@@ -670,6 +676,7 @@ def train(params: Dict,
             _evals_result = {}
             _additional_results = {}
             bst = train(*args,
+                        model_factory=model_factory,
                         num_boost_round=num_boost_round,
                         evals_result=_evals_result,
                         additional_results=_additional_results,
@@ -744,7 +751,8 @@ def train(params: Dict,
         'data', 'data_parallel', 
         'voting','voting_parallel'
         # not yet supported in LightGBM python API
-        #'feature', 'feature_parallel', 
+        # (as of ver 3.2.1)
+        # 'feature', 'feature_parallel', 
     }
     if params["tree_learner"] not in allowed_tree_learners:
         logger.warning(
@@ -752,7 +760,7 @@ def train(params: Dict,
             % params['tree_learner'])
         params['tree_learner'] = 'data'
 
-    for param_alias in _ConfigAliases.get('num_machines', 'num_threads'):
+    for param_alias in _ConfigAliases.get('num_machines', 'num_threads', 'num_iterations', 'n_estimators'):
         if param_alias in params:
             logger.warning(f"Parameter {param_alias} will be ignored.")
             params.pop(param_alias)
@@ -949,9 +957,9 @@ def train(params: Dict,
     train_additional_results["training_time_s"] = total_training_time
     train_additional_results["total_time_s"] = total_time
 
-    logger.info("[RayXGBoost] Finished XGBoost training on training data "
+    logger.info("[RayLightGBM] Finished LightGBM training on training data "
                 "with total N={total_n:,} in {total_time_s:.2f} seconds "
-                "({training_time_s:.2f} pure XGBoost training time).".format(
+                "({training_time_s:.2f} pure LightGBM training time).".format(
                     **train_additional_results))
 
     _shutdown(actors=actors,
@@ -989,7 +997,7 @@ def _predict(model: LGBMModel, data: RayDMatrix, ray_params: RayParams,
             distributed_callbacks=ray_params.distributed_callbacks)
         for i in range(ray_params.num_actors)
     ]
-    logger.info(f"[RayXGBoost] Created {len(actors)} remote actors.")
+    logger.info(f"[RayLightGBM] Created {len(actors)} remote actors.")
 
     # Split data across workers
     wait_load = []
@@ -1006,7 +1014,7 @@ def _predict(model: LGBMModel, data: RayDMatrix, ray_params: RayParams,
     # Put model into object store
     model_ref = ray.put(model)
 
-    logger.info("[RayXGBoost] Starting XGBoost prediction.")
+    logger.info("[RayLightGBM] Starting LightGBM prediction.")
 
     # Train
     fut = [actor.predict.remote(model_ref, data, **kwargs) for actor in actors]
