@@ -9,3 +9,4 @@ ray[tune]
 scikit-learn
 modin
 xgboost_ray>=0.1.1
+parameterized

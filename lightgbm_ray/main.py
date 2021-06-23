@@ -5,6 +5,7 @@ import time
 import logging
 import os
 import threading
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -204,8 +205,6 @@ class RayLightGBMActor(RayXGBoostActor):
 
         is_ranker = issubclass(self.model_factory, LGBMRanker)
 
-        print(local_params)
-
         # We run xgb.train in a thread to be able to react to the stop event.
 
         def _train():
@@ -245,6 +244,7 @@ class RayLightGBMActor(RayXGBoostActor):
                 # Silent fail, will be raised as RayXGBoostTrainingStopped.
                 return
             except LightGBMError as e:
+                traceback.print_exc()
                 error_dict.update({"exception": e})
                 return
 
@@ -269,7 +269,11 @@ class RayLightGBMActor(RayXGBoostActor):
 
         return result_dict
 
-    def predict(self, model: LGBMModel, data: RayDMatrix, **kwargs):
+    def predict(self,
+                model: LGBMModel,
+                data: RayDMatrix,
+                method="predict",
+                **kwargs):
         self._distributed_callbacks.before_predict(self)
 
         _set_omp_num_threads()
@@ -278,10 +282,7 @@ class RayLightGBMActor(RayXGBoostActor):
             self.load_data(data)
         local_data = self._data[data]["data"]
 
-        if hasattr(model, "predict_proba"):
-            predictions = model.predict_proba(local_data, **kwargs)
-        else:
-            predictions = model.predict(local_data, **kwargs)
+        predictions = getattr(model, method)(local_data, **kwargs)
 
         if predictions.ndim == 1:
             callback_predictions = pd.Series(predictions)
@@ -489,7 +490,7 @@ def _train(params: Dict,
     ips, ports = zip(*addresses)
     ips = list(ips)
     ports = list(ports)
-    machines = ','.join([f"{ip}:{port}" for ip, port in addresses])
+    machines = ",".join([f"{ip}:{port}" for ip, port in addresses])
 
     for i, actor in enumerate(live_actors):
         actor.set_network_params.remote(machines, ports[i], len(live_actors),
@@ -582,14 +583,14 @@ def _train(params: Dict,
     evals_result = all_results[0]["evals_result"]
 
     if not listen_port_in_params:
-        for param in _ConfigAliases.get('local_listen_port'):
+        for param in _ConfigAliases.get("local_listen_port"):
             bst._other_params.pop(param, None)
 
     if not machines_in_params:
-        for param in _ConfigAliases.get('machines'):
+        for param in _ConfigAliases.get("machines"):
             bst._other_params.pop(param, None)
 
-    for param in _ConfigAliases.get('num_machines', 'timeout'):
+    for param in _ConfigAliases.get("num_machines", "timeout"):
         bst._other_params.pop(param, None)
 
     if callback_returns:
@@ -751,19 +752,19 @@ def train(
         main_param_name="device_type", params=params, default_value="cpu")
 
     allowed_tree_learners = {
-        'data', 'data_parallel', 'voting', 'voting_parallel'
+        "data", "data_parallel", "voting", "voting_parallel"
         # not yet supported in LightGBM python API
         # (as of ver 3.2.1)
-        # 'feature', 'feature_parallel',
+        # "feature", "feature_parallel",
     }
     if params["tree_learner"] not in allowed_tree_learners:
         logger.warning(
-            'Parameter tree_learner set to %s, which is not allowed. Using "data" as default'
-            % params['tree_learner'])
-        params['tree_learner'] = 'data'
+            f"Parameter tree_learner set to {params['tree_learner']},"
+            " which is not allowed. Using 'data' as default")
+        params["tree_learner"] = "data"
 
-    for param_alias in _ConfigAliases.get('num_machines', 'num_threads',
-                                          'num_iterations', 'n_estimators'):
+    for param_alias in _ConfigAliases.get("num_machines", "num_threads",
+                                          "num_iterations", "n_estimators"):
         if param_alias in params:
             logger.warning(f"Parameter {param_alias} will be ignored.")
             params.pop(param_alias)
@@ -982,8 +983,8 @@ def train(
     return bst
 
 
-def _predict(model: LGBMModel, data: RayDMatrix, ray_params: RayParams,
-             **kwargs):
+def _predict(model: LGBMModel, data: RayDMatrix, method: str,
+             ray_params: RayParams, **kwargs):
     _assert_ray_support()
 
     if not ray.is_initialized():
@@ -1022,7 +1023,10 @@ def _predict(model: LGBMModel, data: RayDMatrix, ray_params: RayParams,
     logger.info("[RayLightGBM] Starting LightGBM prediction.")
 
     # Train
-    fut = [actor.predict.remote(model_ref, data, **kwargs) for actor in actors]
+    fut = [
+        actor.predict.remote(model_ref, data, method, **kwargs)
+        for actor in actors
+    ]
 
     try:
         actor_results = ray.get(fut)
@@ -1038,6 +1042,7 @@ def _predict(model: LGBMModel, data: RayDMatrix, ray_params: RayParams,
 
 def predict(model: LGBMModel,
             data: RayDMatrix,
+            method: str = "predict",
             ray_params: Union[None, RayParams, Dict] = None,
             _remote: Optional[bool] = None,
             **kwargs) -> Optional[np.ndarray]:
@@ -1051,6 +1056,7 @@ def predict(model: LGBMModel,
     Args:
         model (xgb.Booster): Booster object to call for prediction.
         data (RayDMatrix): Data object containing the prediction data.
+        method (str): Name of estimator method to use for prediction.
         ray_params (Union[None, RayParams, Dict]): Parameters to configure
             Ray-specific behavior. See :class:`RayParams` for a list of valid
             configuration parameters.
@@ -1074,7 +1080,7 @@ def predict(model: LGBMModel,
     if _remote:
         return ray.get(
             ray.remote(num_cpus=0)(predict).remote(
-                model, data, ray_params, _remote=False, **kwargs))
+                model, data, method, ray_params, _remote=False, **kwargs))
 
     _maybe_print_legacy_warning()
 
@@ -1094,7 +1100,8 @@ def predict(model: LGBMModel,
     tries = 0
     while tries <= max_actor_restarts:
         try:
-            return _predict(model, data, ray_params=ray_params, **kwargs)
+            return _predict(
+                model, data, method=method, ray_params=ray_params, **kwargs)
         except RayActorError:
             if tries + 1 <= max_actor_restarts:
                 logger.warning(
