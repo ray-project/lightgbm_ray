@@ -18,8 +18,9 @@ class lgbm_network_free:
     def __exit__(self, type, value, traceback):
         try:
             self.model.booster_.free_network()
-        except AttributeError:
-            _safe_call(self.lib.LGBM_NetworkFree())
+        except Exception:
+            pass
+        _safe_call(self.lib.LGBM_NetworkFree())
 
 
 def find_free_port() -> int:

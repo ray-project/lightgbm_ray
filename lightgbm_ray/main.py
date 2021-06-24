@@ -1,4 +1,33 @@
-from typing import Tuple, Dict, Any, List, Optional, Type, Union, Sequence, Callable
+# Portions of the code used in this file come from lightgbm.dask
+
+# The MIT License (MIT)
+
+# Copyright (c) Microsoft Corporation
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# License:
+# https://github.com/microsoft/LightGBM/blob/c3b9363d02564625332583e166e3ab3135f436e3/LICENSE
+
+
+from typing import (Tuple, Dict, Any, List, Optional, Type, Union, Sequence,
+                    Callable)
 
 from copy import deepcopy
 import time
@@ -17,12 +46,22 @@ from lightgbm.callback import CallbackEnv
 
 import ray
 
-import xgboost as xgb
-from xgboost_ray.main import _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data, _trigger_data_load
+from xgboost_ray.main import (
+    _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix,
+    concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback,
+    STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams,
+    _TrainingState, _is_client_connected, is_session_enabled,
+    force_on_current_node, _assert_ray_support, _validate_ray_params,
+    _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources,
+    _Checkpoint, _create_communication_processes, TUNE_USING_PG,
+    _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable,
+    RayXGBoostTrainingError, _create_placement_group, _shutdown,
+    PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data,
+    _trigger_data_load)
+from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
 from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
-from xgboost_ray.session import put_queue
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +180,10 @@ class RayLightGBMActor(RayXGBoostActor):
         return _stop_callback()
 
     def find_free_address(self):
-        return (self.ip(), find_free_port())
+        port = self.port()
+        if not port:
+            port = find_free_port()
+        return (self.ip(), port)
 
     def port(self) -> Optional[int]:
         return self.network_params.get("local_listen_port", None)
@@ -350,8 +392,15 @@ def _create_actor(
         placement_group: Optional[PlacementGroup] = None,
         queue: Optional[Queue] = None,
         checkpoint_frequency: int = 5,
-        distributed_callbacks: Optional[Sequence[DistributedCallback]] = None
+        distributed_callbacks: Optional[Sequence[DistributedCallback]] = None,
+        ip: Optional[str] = None,
+        port: Optional[int] = None,
 ) -> ActorHandle:
+    if ip:
+        if resources_per_actor is not None:
+            resources_per_actor["node"] = ip
+        else:
+            resources_per_actor = {"node": ip}
     return _RemoteRayLightGBMActor.options(
         num_cpus=num_cpus_per_actor,
         num_gpus=num_gpus_per_actor,
@@ -362,7 +411,8 @@ def _create_actor(
             model_factory=model_factory,
             queue=queue,
             checkpoint_frequency=checkpoint_frequency,
-            distributed_callbacks=distributed_callbacks)
+            distributed_callbacks=distributed_callbacks,
+            network_params={"local_listen_port": port} if port else None)
 
 
 def _train(params: Dict,
@@ -375,7 +425,9 @@ def _train(params: Dict,
            cpus_per_actor: int,
            gpus_per_actor: int,
            _training_state: _TrainingState,
-           **kwargs) -> Tuple[xgb.Booster, Dict, Dict]:
+           machine_addresses: Optional[List[Tuple[str, str]]] = None,
+           listen_port: Optional[int] = None,
+           **kwargs) -> Tuple[LGBMModel, Dict, Dict]:
     """This is the local train function wrapped by :func:`train() <train>`.
 
     This function can be thought of one invocation of a multi-actor xgboost
@@ -395,14 +447,6 @@ def _train(params: Dict,
     _training_state.restart_training_at = None
 
     params = deepcopy(params)
-
-    # capture whether local_listen_port or its aliases were provided
-    listen_port_in_params = any(
-        alias in params for alias in _ConfigAliases.get("local_listen_port"))
-
-    # capture whether machines or its aliases were provided
-    machines_in_params = any(
-        alias in params for alias in _ConfigAliases.get("machines"))
 
     if "n_jobs" in params:
         if params["n_jobs"] > cpus_per_actor:
@@ -432,6 +476,13 @@ def _train(params: Dict,
             raise RuntimeError(
                 f"Trying to create actor with rank {i}, but it already "
                 f"exists.")
+        ip = None
+        port = None
+        if machine_addresses:
+            ip = machine_addresses[i][0]
+            port = machine_addresses[i][1]
+        elif listen_port:
+            port = listen_port
         actor = _create_actor(
             rank=i,
             num_actors=ray_params.num_actors,
@@ -442,7 +493,9 @@ def _train(params: Dict,
             placement_group=_training_state.placement_group,
             queue=_training_state.queue,
             checkpoint_frequency=ray_params.checkpoint_frequency,
-            distributed_callbacks=ray_params.distributed_callbacks)
+            distributed_callbacks=ray_params.distributed_callbacks,
+            ip=ip,
+            port=port)
         # Set actor entry in our list
         _training_state.actors[i] = actor
         # Remove from this set so it is not created again
@@ -619,18 +672,18 @@ def _train(params: Dict,
 
     # All results should be the same because of Rabit tracking. But only
     # the first one actually returns its bst object.
-    bst = all_results[0]["bst"]
+    bst: LGBMModel = all_results[0]["bst"]
     evals_result = all_results[0]["evals_result"]
 
-    if not listen_port_in_params:
+    if not listen_port:
         for param in _ConfigAliases.get("local_listen_port"):
             bst._other_params.pop(param, None)
 
-    if not machines_in_params:
+    if not machine_addresses:
         for param in _ConfigAliases.get("machines"):
             bst._other_params.pop(param, None)
 
-    for param in _ConfigAliases.get("num_machines", "timeout"):
+    for param in _ConfigAliases.get("num_machines", "time_out"):
         bst._other_params.pop(param, None)
 
     if callback_returns:
@@ -691,6 +744,7 @@ def train(
     Args:
         params (Dict): parameter dict passed to ``xgboost.train()``
         dtrain (RayDMatrix): Data object containing the training data.
+        model_factory (Type[LGBMModel]) Model class to use for training.
         evals (Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix, str]]):
             ``evals`` tuple passed to ``xgboost.train()``.
         evals_result (Optional[Dict]): Dict to store evaluation results in.
@@ -703,7 +757,7 @@ def train(
         **kwargs: Keyword arguments will be passed to the local
             `xgb.train()` calls.
 
-    Returns: An ``xgboost.Booster`` object.
+    Returns: An ``LGBMModel`` object.
     """
     os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
 
@@ -753,6 +807,41 @@ def train(
     start_time = time.time()
 
     ray_params = _validate_ray_params(ray_params)
+
+    params = params.copy()
+
+    # capture whether local_listen_port or its aliases were provided
+    listen_port_in_params = any(
+        alias in params for alias in _ConfigAliases.get("local_listen_port"))
+
+    # capture whether machines or its aliases were provided
+    machines_in_params = any(
+        alias in params for alias in _ConfigAliases.get("machines"))
+
+    machine_addresses = None
+    listen_port = None
+    if machines_in_params:
+        params = _choose_param_value(
+            main_param_name="machines", params=params, default_value=None)
+        machines = params["machines"]
+        machine_addresses = machines.split(",")
+        if len(set(machine_addresses)) != len(machine_addresses):
+            raise ValueError(
+                f"Found duplicates in `machines` ({machines}). Each entry in "
+                "`machines` must be a unique IP-port combination.")
+        if len(machine_addresses) != ray_params.num_actors:
+            raise ValueError(
+                f"`num_actors` in `ray_params` ({ray_params.num_actors}) must "
+                "match the number of IP-port combinations in `machines` "
+                f"({len(machine_addresses)}).")
+        logger.info(f"Using user passed machines {machine_addresses}")
+    if listen_port_in_params:
+        params = _choose_param_value(
+            main_param_name="local_listen_port",
+            params=params,
+            default_value=None)
+        listen_port = params["local_listen_port"]
+        logger.info(f"Using user passed local_listen_port {listen_port}")
 
     max_actor_restarts = ray_params.max_actor_restarts \
         if ray_params.max_actor_restarts >= 0 else float("inf")
@@ -923,6 +1012,8 @@ def train(
                 cpus_per_actor=cpus_per_actor,
                 gpus_per_actor=gpus_per_actor,
                 _training_state=training_state,
+                machine_addresses=machine_addresses,
+                listen_port=listen_port,
                 **kwargs)
             if training_state.training_started_at > 0.:
                 total_training_time += time.time(
@@ -1085,15 +1176,15 @@ def predict(model: LGBMModel,
             ray_params: Union[None, RayParams, Dict] = None,
             _remote: Optional[bool] = None,
             **kwargs) -> Optional[np.ndarray]:
-    """Distributed XGBoost predict via Ray.
+    """Distributed LightGBM predict via Ray.
 
     This function will connect to a Ray cluster, create ``num_actors``
     remote actors, send data shards to them, and have them predict labels
-    using an XGBoost booster model. The results are then combined and
+    using an LightGBM model. The results are then combined and
     returned.
 
     Args:
-        model (xgb.Booster): Booster object to call for prediction.
+        model (LGBMModel): Model object to call for prediction.
         data (RayDMatrix): Data object containing the prediction data.
         method (str): Name of estimator method to use for prediction.
         ray_params (Union[None, RayParams, Dict]): Parameters to configure
