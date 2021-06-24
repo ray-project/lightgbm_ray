@@ -1,11 +1,11 @@
-from typing import Tuple, Dict, Any, List, Optional, Type, Union, Sequence
+from typing import Tuple, Dict, Any, List, Optional, Type, Union, Sequence, Callable
 
 from copy import deepcopy
 import time
 import logging
 import os
 import threading
-import traceback
+# import traceback
 
 import numpy as np
 import pandas as pd
@@ -13,17 +13,24 @@ import pandas as pd
 from lightgbm import LGBMModel, LGBMRanker
 from lightgbm.basic import _choose_param_value, _ConfigAliases
 from lightgbm.basic import LightGBMError
-from lightgbm.callback import EarlyStopException
+from lightgbm.callback import CallbackEnv
 
 import ray
 
 import xgboost as xgb
-from xgboost_ray.main import RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data, _trigger_data_load
+from xgboost_ray.main import _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix, concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback, STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams, _TrainingState, _is_client_connected, is_session_enabled, force_on_current_node, _assert_ray_support, _validate_ray_params, _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources, _Checkpoint, _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group, _shutdown, PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data, _trigger_data_load
 from xgboost_ray import RayDMatrix
 
-from lightgbm_ray.util import find_free_port, lgbm_network_free
+from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
+from xgboost_ray.session import put_queue
 
 logger = logging.getLogger(__name__)
+
+ELASTIC_RESTART_DISABLED = True
+
+
+class StopException(Exception):
+    pass
 
 
 def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
@@ -94,17 +101,53 @@ class RayLightGBMActor(RayXGBoostActor):
             checkpoint_frequency=checkpoint_frequency,
             distributed_callbacks=distributed_callbacks)
 
-    def _save_checkpoint_callback(self):
-        return
+    def _save_checkpoint_callback(self, is_head):
+        this = self
 
-    def _stop_callback(self):
-        return
+        def _save_internal_checkpoint_callback() -> Callable:
+            def _callback(env: CallbackEnv) -> None:
+                if not is_head:
+                    return
+                if env.iteration % this.checkpoint_frequency == 0:
+                    put_queue(
+                        _Checkpoint(env.iteration, pickle.dumps(env.model)))
+                if env.iteration == env.end_iteration - 1:
+                    put_queue(_Checkpoint(-1, pickle.dumps(env.model)))
+
+            _callback.order = 25  # type: ignore
+            return _callback
+
+        return _save_internal_checkpoint_callback()
+
+    def _stop_callback(self, is_head):
+        this = self
+        # Keep track of initial stop event. Since we're training in a thread,
+        # the stop event might be overwritten, which should he handled
+        # as if the previous stop event was set.
+        initial_stop_event = self._stop_event
+
+        def _stop_callback() -> Callable:
+            def _callback(env: CallbackEnv) -> None:
+                try:
+                    if this._stop_event.is_set() or \
+                            this._get_stop_event() is not initial_stop_event:
+                        raise StopException()
+                except RayActorError:
+                    raise StopException()
+
+            _callback.order = 26  # type: ignore
+            return _callback
+
+        return _stop_callback()
 
     def find_free_address(self):
         return (self.ip(), find_free_port())
 
     def port(self) -> Optional[int]:
         return self.network_params.get("local_listen_port", None)
+
+    def is_port_free(self, port: int) -> bool:
+        return is_port_free(port)
 
     def set_network_params(
             self,
@@ -187,13 +230,13 @@ class RayLightGBMActor(RayXGBoostActor):
             local_eval_sample_weights.append(self._data[deval]["weight"])
             local_eval_init_scores.append(self._data[deval]["base_margin"])
 
-        # if "callbacks" in kwargs:
-        #     callbacks = kwargs["callbacks"] or []
-        # else:
-        #     callbacks = []
-        # callbacks.append(self._save_checkpoint_callback())
-        # callbacks.append(self._stop_callback())
-        # kwargs["callbacks"] = callbacks
+        if "callbacks" in kwargs:
+            callbacks = kwargs["callbacks"] or []
+        else:
+            callbacks = []
+        callbacks.append(self._save_checkpoint_callback(is_head=return_bst))
+        callbacks.append(self._stop_callback(is_head=return_bst))
+        kwargs["callbacks"] = callbacks
 
         result_dict = {}
         error_dict = {}
@@ -210,7 +253,7 @@ class RayLightGBMActor(RayXGBoostActor):
         def _train():
             try:
                 model = self.model_factory(**local_params)
-                with lgbm_network_free(_LIB):
+                with lgbm_network_free(model, _LIB):
                     if is_ranker:
                         # missing group arg
                         model.fit(
@@ -239,12 +282,12 @@ class RayLightGBMActor(RayXGBoostActor):
                     "evals_result": model.evals_result_,
                     "train_n": self._local_n[dtrain]
                 })
-            except EarlyStopException:
+            except StopException:
                 # Usually this should be caught by XGBoost core.
                 # Silent fail, will be raised as RayXGBoostTrainingStopped.
                 return
             except LightGBMError as e:
-                traceback.print_exc()
+                # traceback.print_exc()
                 error_dict.update({"exception": e})
                 return
 
@@ -383,6 +426,7 @@ def _train(params: Dict,
     # will be all actors. In future invocations, this may be less than
     # the num_actors setting, depending on the failure mode.
     newly_created = 0
+
     for i in list(_training_state.failed_actor_ranks):
         if _training_state.actors[i] is not None:
             raise RuntimeError(
@@ -487,14 +531,16 @@ def _train(params: Dict,
     ]
     addresses = ray.get(
         [actor.find_free_address.remote() for actor in live_actors])
-    ips, ports = zip(*addresses)
-    ips = list(ips)
-    ports = list(ports)
-    machines = ",".join([f"{ip}:{port}" for ip, port in addresses])
+    if addresses:
+        ips, ports = zip(*addresses)
+        ips = list(ips)
+        ports = list(ports)
+        machines = ",".join([f"{ip}:{port}" for ip, port in addresses])
 
-    for i, actor in enumerate(live_actors):
-        actor.set_network_params.remote(machines, ports[i], len(live_actors),
-                                        params.get("time_out", 120))
+        for i, actor in enumerate(live_actors):
+            actor.set_network_params.remote(machines, ports[i],
+                                            len(live_actors),
+                                            params.get("time_out", 120))
 
     training_futures = [
         actor.train.remote(
@@ -507,66 +553,62 @@ def _train(params: Dict,
             **kwargs) for i, actor in enumerate(live_actors)
     ]
 
-    # # Failure handling loop. Here we wait until all training tasks finished.
-    # # If a training task fails, we stop training on the remaining actors,
-    # # check which ones are still alive, and raise the error.
-    # # The train() wrapper function will then handle the error.
-    # start_wait = time.time()
-    # last_status = start_wait
-    # try:
-    #     not_ready = training_futures
-    #     while not_ready:
-    #         if _training_state.queue:
-    #             _handle_queue(
-    #                 queue=_training_state.queue,
-    #                 checkpoint=_training_state.checkpoint,
-    #                 callback_returns=callback_returns)
+    # Failure handling loop. Here we wait until all training tasks finished.
+    # If a training task fails, we stop training on the remaining actors,
+    # check which ones are still alive, and raise the error.
+    # The train() wrapper function will then handle the error.
+    start_wait = time.time()
+    last_status = start_wait
+    try:
+        not_ready = training_futures
+        while not_ready:
+            if _training_state.queue:
+                _handle_queue(
+                    queue=_training_state.queue,
+                    checkpoint=_training_state.checkpoint,
+                    callback_returns=callback_returns)
 
-    #         if ray_params.elastic_training \
-    #                 and not ELASTIC_RESTART_DISABLED:
-    #             _maybe_schedule_new_actors(
-    #                 training_state=_training_state,
-    #                 num_cpus_per_actor=cpus_per_actor,
-    #                 num_gpus_per_actor=gpus_per_actor,
-    #                 resources_per_actor=ray_params.resources_per_actor,
-    #                 ray_params=ray_params,
-    #                 load_data=load_data)
+            if ray_params.elastic_training \
+                    and not ELASTIC_RESTART_DISABLED:
+                _maybe_schedule_new_actors(
+                    training_state=_training_state,
+                    num_cpus_per_actor=cpus_per_actor,
+                    num_gpus_per_actor=gpus_per_actor,
+                    resources_per_actor=ray_params.resources_per_actor,
+                    ray_params=ray_params,
+                    load_data=load_data)
 
-    #             # This may raise RayXGBoostActorAvailable
-    #             _update_scheduled_actor_states(_training_state)
+                # This may raise RayXGBoostActorAvailable
+                _update_scheduled_actor_states(_training_state)
 
-    #         if time.time() >= last_status + STATUS_FREQUENCY_S:
-    #             wait_time = time.time() - start_wait
-    #             logger.info(f"Training in progress "
-    #                         f"({wait_time:.0f} seconds since last restart).")
-    #             last_status = time.time()
+            if time.time() >= last_status + STATUS_FREQUENCY_S:
+                wait_time = time.time() - start_wait
+                logger.info(f"Training in progress "
+                            f"({wait_time:.0f} seconds since last restart).")
+                last_status = time.time()
 
-    #         ready, not_ready = ray.wait(
-    #             not_ready, num_returns=len(not_ready), timeout=1)
-    #         ray.get(ready)
+            ready, not_ready = ray.wait(
+                not_ready, num_returns=len(not_ready), timeout=1)
+            ray.get(ready)
 
-    #     # Get items from queue one last time
-    #     if _training_state.queue:
-    #         _handle_queue(
-    #             queue=_training_state.queue,
-    #             checkpoint=_training_state.checkpoint,
-    #             callback_returns=callback_returns)
+        # Get items from queue one last time
+        if _training_state.queue:
+            _handle_queue(
+                queue=_training_state.queue,
+                checkpoint=_training_state.checkpoint,
+                callback_returns=callback_returns)
 
-    # # The inner loop should catch all exceptions
-    # except Exception as exc:
-    #     logger.debug(f"Caught exception in training loop: {exc}")
+    # The inner loop should catch all exceptions
+    except Exception as exc:
+        logger.debug(f"Caught exception in training loop: {exc}")
 
-    #     # Stop all other actors from training
-    #     _training_state.stop_event.set()
+        # Stop all other actors from training
+        _training_state.stop_event.set()
 
-    #     # Check which actors are still alive
-    #     _get_actor_alive_status(_training_state.actors, handle_actor_failure)
+        # Check which actors are still alive
+        _get_actor_alive_status(_training_state.actors, handle_actor_failure)
 
-    #     # Todo: Try to fetch newer checkpoint, store in `_checkpoint`
-    #     # Shut down rabit
-    #     _stop_rabit_tracker(rabit_process)
-
-    #     raise RayActorError from exc
+        raise RayActorError from exc
 
     # # Training is now complete.
     # # Stop Rabit tracking process
@@ -574,8 +616,6 @@ def _train(params: Dict,
 
     # Get all results from all actors.
     all_results: List[Dict[str, Any]] = ray.get(training_futures)
-
-    print(all_results)
 
     # All results should be the same because of Rabit tracking. But only
     # the first one actually returns its bst object.
@@ -727,12 +767,11 @@ def train(
                 type(dtrain)))
 
     added_tune_callback = _try_add_tune_callback(kwargs)
-    # Tune currently does not support elastic training.
-    if added_tune_callback and ray_params.elastic_training and not bool(
-            os.getenv("RXGB_ALLOW_ELASTIC_TUNE", "0")):
-        raise ValueError("Elastic Training cannot be used with Ray Tune. "
+    # LGBM currently does not support elastic training.
+    if ray_params.elastic_training:
+        raise ValueError("Elastic Training cannot be used with LightGBM. "
                          "Please disable elastic_training in RayParams in "
-                         "order to use xgboost_ray with Tune.")
+                         "order to use lightgbm_ray.")
 
     if added_tune_callback:
         # Don't autodetect resources when used with Tune.

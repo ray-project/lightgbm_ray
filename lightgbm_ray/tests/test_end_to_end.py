@@ -93,6 +93,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             "num_class": 4,
             "random_state": 1,
             "tree_learner": "data",
+            "deterministic": True,
         }
 
     def tearDown(self):
@@ -149,10 +150,10 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         bst = train(
             self.params,
             RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH),
-            num_boost_round=101,
+            num_boost_round=50,
             ray_params=RayParams(num_actors=2, cpus_per_actor=2))
 
-        self.assertEqual(bst.get_params()["n_estimators"], 101)
+        self.assertEqual(bst.booster_.current_iteration(), 50)
 
         pred_y = bst.predict(self.x)
         pred_y = np.argmax(pred_y, axis=1)
