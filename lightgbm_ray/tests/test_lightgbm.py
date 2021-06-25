@@ -44,6 +44,7 @@ import sklearn.utils.estimator_checks as sklearn_checks
 from sklearn.datasets import make_blobs, make_regression
 from sklearn.metrics import r2_score, accuracy_score
 from sklearn.model_selection import train_test_split
+from sklearn.utils import _safe_indexing
 
 data_output = [
     "array", "dataframe", "dataframe-with-categorical",
@@ -140,19 +141,29 @@ def _create_data(objective, n_samples=2000, output="array", **kwargs):
             raise ValueError(f"Unknown output type '{output}'")
         return dX, dy, dw
 
-    X_train, X_test, y_train, y_test, weights_train, weights_test = (
-        train_test_split(
-            X,
-            y,
-            weights,
-            test_size=0.5,
-            stratify=y if objective.endswith("classification") else None))
+    train_idx, test_idx = (train_test_split(
+        np.arange(0, len(X)),
+        test_size=0.5,
+        stratify=y if objective.endswith("classification") else None,
+        random_state=42,
+        shuffle=True))
 
-    dX, dy, dw = convert_data(X_train, y_train, weights_train)
-    dX_test, dy_test, dw_test = convert_data(X_test, y_test, weights_test)
+    if output.startswith("raydmatrix"):
+        dX, dy, dw = convert_data(X[train_idx], y[train_idx],
+                                  weights[train_idx])
+        dX_test, dy_test, dw_test = convert_data(X[test_idx], y[test_idx],
+                                                 weights[test_idx])
+    else:
+        dX, dy, dw = convert_data(X, y, weights)
+        dX_test = _safe_indexing(dX, test_idx)
+        dy_test = _safe_indexing(dy, test_idx)
+        dw_test = _safe_indexing(dw, test_idx)
+        dX = _safe_indexing(dX, train_idx)
+        dy = _safe_indexing(dy, train_idx)
+        dw = _safe_indexing(dw, train_idx)
 
-    return (X_train, y_train, weights_train, None, dX, dy, dw, None, dX_test,
-            dy_test, dw_test)
+    return (X[train_idx], y[train_idx], weights[train_idx], None, dX, dy, dw,
+            None, dX_test, dy_test, dw_test)
 
 
 class LGBMRayTest(unittest.TestCase):
@@ -173,6 +184,8 @@ class LGBMRayTest(unittest.TestCase):
             )))
     def testClassifier(self, output, task, boosting_type, tree_learner):
         ray.init(num_cpus=4, num_gpus=0)
+
+        print(output, task, boosting_type, tree_learner)
 
         X, y, w, _, dX, dy, dw, _, dX_test, dy_test, dw_test = _create_data(
             objective=task, output=output)
@@ -240,8 +253,6 @@ class LGBMRayTest(unittest.TestCase):
             self.assertTrue(np.allclose(p1, p2))
             self.assertTrue(np.allclose(p1, ly))
             self.assertTrue(np.allclose(p2, ly))
-            print(p1_proba)
-            print(p2_proba)
             self.assertTrue(np.allclose(p1_proba, p2_proba, atol=0.1))
             self.assertTrue(np.allclose(p1_local, p2))
             self.assertTrue(np.allclose(p1_local, ly))
