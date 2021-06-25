@@ -210,14 +210,14 @@ class LGBMRayTest(unittest.TestCase):
 
         ray_classifier = RayLGBMClassifier(**params)
         ray_classifier = ray_classifier.fit(
-            dX, dy, sample_weight=dw, ray_params=self.ray_params)
-        ray_classifier = ray_classifier.fit(
             dX,
             dy,
             sample_weight=dw,
             ray_params=self.ray_params,
             eval_set=eval_set,
             eval_sample_weight=eval_weights)
+        ray_classifier = ray_classifier.fit(
+            dX, dy, sample_weight=dw, ray_params=self.ray_params)
         p1 = ray_classifier.predict(dX, ray_params=self.ray_params)
         p1_proba = ray_classifier.predict_proba(dX, ray_params=self.ray_params)
         p1_pred_leaf = ray_classifier.predict(
@@ -240,7 +240,7 @@ class LGBMRayTest(unittest.TestCase):
             self.assertTrue(np.allclose(p1, p2))
             self.assertTrue(np.allclose(p1, ly))
             self.assertTrue(np.allclose(p2, ly))
-            self.assertTrue(np.allclose(p1_proba, p2_proba, atol=0.03))
+            self.assertTrue(np.allclose(p1_proba, p2_proba, atol=0.1))
             self.assertTrue(np.allclose(p1_local, p2))
             self.assertTrue(np.allclose(p1_local, ly))
 
@@ -387,14 +387,14 @@ class LGBMRayTest(unittest.TestCase):
 
         ray_regressor = RayLGBMRegressor(tree=tree_learner, **params)
         ray_regressor = ray_regressor.fit(
-            dX, dy, sample_weight=dw, ray_params=self.ray_params)
-        ray_regressor = ray_regressor.fit(
             dX,
             dy,
             sample_weight=dw,
             ray_params=self.ray_params,
             eval_set=eval_set,
             eval_sample_weight=eval_weights)
+        ray_regressor = ray_regressor.fit(
+            dX, dy, sample_weight=dw, ray_params=self.ray_params)
         p1 = ray_regressor.predict(dX, ray_params=self.ray_params)
         p1_pred_leaf = ray_regressor.predict(
             dX, pred_leaf=True, ray_params=self.ray_params)
