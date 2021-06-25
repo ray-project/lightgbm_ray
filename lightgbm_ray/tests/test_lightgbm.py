@@ -376,7 +376,6 @@ class LGBMRayTest(unittest.TestCase):
             "random_state": 42,
             "num_leaves": 31,
             "n_estimators": 20,
-            "random_state": 1,
             "deterministic": True,
         }
         if boosting_type == "rf":
@@ -469,7 +468,7 @@ class LGBMRayTest(unittest.TestCase):
             dX, pred_contrib=True, ray_params=self.ray_params)
 
         local_regressor = lgb.LGBMRegressor(**params)
-        local_regressor.fit(lX, ly, sample_weight=w)
+        local_regressor.fit(lX, ly, sample_weight=lw)
         local_preds_with_contrib = local_regressor.predict(
             lX, pred_contrib=True)
 
@@ -504,7 +503,6 @@ class LGBMRayTest(unittest.TestCase):
             "random_state": 42,
             "n_estimators": 10,
             "num_leaves": 10,
-            "random_state": 1,
             "deterministic": True,
         }
 
