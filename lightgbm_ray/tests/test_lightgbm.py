@@ -240,6 +240,8 @@ class LGBMRayTest(unittest.TestCase):
             self.assertTrue(np.allclose(p1, p2))
             self.assertTrue(np.allclose(p1, ly))
             self.assertTrue(np.allclose(p2, ly))
+            print(p1_proba)
+            print(p2_proba)
             self.assertTrue(np.allclose(p1_proba, p2_proba, atol=0.1))
             self.assertTrue(np.allclose(p1_local, p2))
             self.assertTrue(np.allclose(p1_local, ly))
