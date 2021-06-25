@@ -47,8 +47,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils import _safe_indexing
 
 data_output = [
-    "array", "dataframe", "dataframe-with-categorical",
-    "raydmatrix-interleaved", #"raydmatrix-batch"
+    "array",
+    "dataframe",
+    "dataframe-with-categorical",
+    "raydmatrix-interleaved",  # "raydmatrix-batch"
 ]
 boosting_types = ["gbdt"]  # "dart", "goss", "rf"]
 distributed_training_algorithms = ["data", "voting"]
