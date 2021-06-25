@@ -196,7 +196,9 @@ class LGBMRayTest(unittest.TestCase):
             "boosting_type": boosting_type,
             "tree_learner": tree_learner,
             "n_estimators": 50,
-            "num_leaves": 31
+            "num_leaves": 31,
+            "random_state": 1,
+            "deterministic": True,
         }
         if boosting_type == "rf":
             params.update({
@@ -275,7 +277,12 @@ class LGBMRayTest(unittest.TestCase):
         X, y, w, _, dX, dy, dw, _, dX_test, dy_test, dw_test = _create_data(
             objective=task, output=output)
 
-        params = {"n_estimators": 10, "num_leaves": 10}
+        params = {
+            "n_estimators": 10,
+            "num_leaves": 10,
+            "random_state": 1,
+            "deterministic": True,
+        }
 
         ray_classifier = RayLGBMClassifier(tree_learner="data", **params)
         ray_classifier = ray_classifier.fit(
@@ -369,6 +376,8 @@ class LGBMRayTest(unittest.TestCase):
             "random_state": 42,
             "num_leaves": 31,
             "n_estimators": 20,
+            "random_state": 1,
+            "deterministic": True,
         }
         if boosting_type == "rf":
             params.update({
@@ -446,7 +455,12 @@ class LGBMRayTest(unittest.TestCase):
             ly = dy
             lw = dw
 
-        params = {"n_estimators": 10, "num_leaves": 10}
+        params = {
+            "n_estimators": 10,
+            "num_leaves": 10,
+            "random_state": 1,
+            "deterministic": True,
+        }
 
         ray_regressor = RayLGBMRegressor(tree_learner="data", **params)
         ray_regressor = ray_regressor.fit(
@@ -489,7 +503,9 @@ class LGBMRayTest(unittest.TestCase):
             "alpha": alpha,
             "random_state": 42,
             "n_estimators": 10,
-            "num_leaves": 10
+            "num_leaves": 10,
+            "random_state": 1,
+            "deterministic": True,
         }
 
         if "raydmatrix" in output:
