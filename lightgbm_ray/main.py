@@ -11,8 +11,8 @@
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -24,7 +24,6 @@
 
 # License:
 # https://github.com/microsoft/LightGBM/blob/c3b9363d02564625332583e166e3ab3135f436e3/LICENSE
-
 
 from typing import (Tuple, Dict, Any, List, Optional, Type, Union, Sequence,
                     Callable)
@@ -52,12 +51,11 @@ from xgboost_ray.main import (
     STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams,
     _TrainingState, _is_client_connected, is_session_enabled,
     force_on_current_node, _assert_ray_support, _validate_ray_params,
-    _maybe_print_legacy_warning, _try_add_tune_callback, _autodetect_resources,
-    _Checkpoint, _create_communication_processes, TUNE_USING_PG,
-    _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable,
-    RayXGBoostTrainingError, _create_placement_group, _shutdown,
-    PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data,
-    _trigger_data_load)
+    _maybe_print_legacy_warning, _autodetect_resources, _Checkpoint,
+    _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY,
+    RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError,
+    _create_placement_group, _shutdown, PlacementGroup, ActorHandle,
+    RayXGBoostTrainingStopped, combine_data, _trigger_data_load)
 from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
@@ -430,7 +428,7 @@ def _train(params: Dict,
            **kwargs) -> Tuple[LGBMModel, Dict, Dict]:
     """This is the local train function wrapped by :func:`train() <train>`.
 
-    This function can be thought of one invocation of a multi-actor xgboost
+    This function can be thought of one invocation of a multi-actor lightgbm
     training run. It starts the required number of actors, triggers data
     loading, collects the results, and handles (i.e. registers) actor failures
     - but it does not handle fault tolerance or general training setup.
@@ -710,43 +708,53 @@ def train(
         ray_params: Union[None, RayParams, Dict] = None,
         _remote: Optional[bool] = None,
         **kwargs) -> LGBMModel:
-    """Distributed XGBoost training via Ray.
+    """Distributed LightGBM training via Ray.
 
     This function will connect to a Ray cluster, create ``num_actors``
     remote actors, send data shards to them, and have them train an
-    XGBoost classifier. The XGBoost parameters will be shared and combined
-    via Rabit's all-reduce protocol.
+    LightGBM model using LightGBM's built-in distributed mode.
 
-    If running inside a Ray Tune session, this function will automatically
-    handle results to tune for hyperparameter search.
+    This method handles setting up the following network parameters:
+    - ``local_listen_port``: port that each LightGBM worker opens a
+        listening socket on, to accept connections from other workers.
+        This can differ from LightGBM worker to LightGBM worker, but
+        does not have to.
+    - ``machines``: a comma-delimited list of all workers in the cluster,
+        in the form ``ip:port,ip:port``. If running multiple workers
+        on the same Ray Node, use different ports for each worker. For
+        example, for ``ray_params.num_actors=3``, you might pass
+        ``"127.0.0.1:12400,127.0.0.1:12401,127.0.0.1:12402"``.
+
+    The default behavior of this function is to generate ``machines`` based
+    on Ray workers, and to search for an open port on each worker to be
+    used as ``local_listen_port``.
+
+    If ``machines`` is provided explicitly in ``params``, this function uses
+    the hosts and ports in that list directly, and will try to start Ray
+    workers on the nodes with the given ips. If that is not possible, or any
+    of those ports are not free when training starts, training will fail.
+
+    If ``local_listen_port`` is provided in ``params`` and ``machines`` is not,
+    this function constructs ``machines`` automatically from auto-assigned Ray
+    workers, assuming that each one will use the same ``local_listen_port``.
 
     Failure handling:
 
-    XGBoost on Ray supports automatic failure handling that can be configured
+    LightGBM on Ray supports automatic failure handling that can be configured
     with the :class:`ray_params <RayParams>` argument. If an actor or local
-    training task dies, the Ray actor is marked as dead, and there are
-    three options on how to proceed.
-
-    First, if ``ray_params.elastic_training`` is ``True`` and
-    the number of dead actors is below ``ray_params.max_failed_actors``,
-    training will continue right away with fewer actors. No data will be
-    loaded again and the latest available checkpoint will be used.
-    A maximum of ``ray_params.max_actor_restarts`` restarts will be tried
-    before exiting.
-
-    Second, if ``ray_params.elastic_training`` is ``False`` and
+    training task dies, the Ray actor is marked as dead and
     the number of restarts is below ``ray_params.max_actor_restarts``,
     Ray will try to schedule the dead actor again, load the data shard
     on this actor, and then continue training from the latest checkpoint.
 
-    Third, if none of the above is the case, training is aborted.
+    Otherwise, training is aborted.
 
     Args:
-        params (Dict): parameter dict passed to ``xgboost.train()``
+        params (Dict): parameter dict passed to ``LGBMModel``
         dtrain (RayDMatrix): Data object containing the training data.
         model_factory (Type[LGBMModel]) Model class to use for training.
         evals (Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix, str]]):
-            ``evals`` tuple passed to ``xgboost.train()``.
+            ``evals`` tuple passed to ``LGBMModel.fit()``.
         evals_result (Optional[Dict]): Dict to store evaluation results in.
         additional_results (Optional[Dict]): Dict to store additional results.
         ray_params (Union[None, RayParams, Dict]): Parameters to configure
@@ -855,7 +863,7 @@ def train(
             "`dtrain = RayDMatrix(data=data, label=label)`.".format(
                 type(dtrain)))
 
-    added_tune_callback = _try_add_tune_callback(kwargs)
+    added_tune_callback = False  # _try_add_tune_callback(kwargs)
     # LGBM currently does not support elastic training.
     if ray_params.elastic_training:
         raise ValueError("Elastic Training cannot be used with LightGBM. "

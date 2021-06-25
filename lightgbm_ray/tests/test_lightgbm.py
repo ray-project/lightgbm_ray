@@ -11,8 +11,8 @@
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -29,7 +29,7 @@
 # https://github.com/microsoft/LightGBM/blob/c3b9363d02564625332583e166e3ab3135f436e3/LICENSE
 
 import ray
-from lightgbm_ray import  RayDMatrix, RayParams, RayShardingMode
+from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode
 from lightgbm_ray.sklearn import RayLGBMClassifier, RayLGBMRegressor
 
 import unittest
@@ -38,35 +38,24 @@ import itertools
 
 import lightgbm as lgb
 
-# import cloudpickle
-# import dask.array as da
-# import dask.dataframe as dd
-# import joblib
 import numpy as np
 import pandas as pd
 import sklearn.utils.estimator_checks as sklearn_checks
-# from dask.array.utils import assert_eq
-# from dask.distributed import Client, LocalCluster, default_client, wait
-from pkg_resources import parse_version
-from scipy.sparse import csr_matrix
-from scipy.stats import spearmanr
-from sklearn import __version__ as sk_version
 from sklearn.datasets import make_blobs, make_regression
 from sklearn.metrics import r2_score, accuracy_score
 from sklearn.model_selection import train_test_split
 
 data_output = [
-    # "array", "dataframe", "dataframe-with-categorical",
-    "raydmatrix-interleaved",
-    "raydmatrix-batch"
+    "array", "dataframe", "dataframe-with-categorical",
+    "raydmatrix-interleaved", "raydmatrix-batch"
 ]
 boosting_types = ["gbdt"]  # "dart", "goss", "rf"]
 distributed_training_algorithms = ["data", "voting"]
 
+
 def sklearn_checks_to_run():
     check_names = [
-        "check_estimator_get_tags_default_keys",
-        "check_get_params_invariance",
+        "check_estimator_get_tags_default_keys", "check_get_params_invariance",
         "check_set_params"
     ]
     checks = []
@@ -78,6 +67,7 @@ def sklearn_checks_to_run():
 
 
 estimators_to_test = [RayLGBMClassifier, RayLGBMRegressor]
+
 
 def _create_data(objective, n_samples=2000, output="array", **kwargs):
     if objective.endswith("classification"):
@@ -304,10 +294,14 @@ class LGBMRayTest(unittest.TestCase):
             expected_num_cols = (num_features + 1) * num_classes
 
         # * shape depends on whether it is binary or multiclass classification
-        # * matrix for binary classification is of the form [feature_contrib, base_value],
-        #   for multi-class it"s [feat_contrib_class1, base_value_class1, feat_contrib_class2, base_value_class2, etc.]
-        # * contrib outputs for distributed training are different than from local training, so we can just test
-        #   that the output has the right shape and base values are in the right position
+        # * matrix for binary classification is of the form [feature_contrib,
+        #   base_value],
+        #   for multi-class it"s [feat_contrib_class1, base_value_class1,
+        #   feat_contrib_class2, base_value_class2, etc.]
+        # * contrib outputs for distributed training are different than from
+        #   local training, so we can just test
+        #   that the output has the right shape and base values are in the
+        #   right position
         assert preds_with_contrib.shape[1] == expected_num_cols
         assert preds_with_contrib.shape == local_preds_with_contrib.shape
 
@@ -423,8 +417,10 @@ class LGBMRayTest(unittest.TestCase):
         local_preds_with_contrib = local_regressor.predict(
             X, pred_contrib=True)
 
-        # contrib outputs for distributed training are different than from local training, so we can just test
-        # that the output has the right shape and base values are in the right position
+        # contrib outputs for distributed training are different than
+        # from local training, so we can just test
+        # that the output has the right shape and base values are in
+        # the right position
         num_features = X.shape[1]
         assert preds_with_contrib.shape[1] == num_features + 1
         assert preds_with_contrib.shape == local_preds_with_contrib.shape
@@ -482,19 +478,16 @@ class LGBMRayTest(unittest.TestCase):
             assert tree_df.loc[node_uses_cat_col, "decision_type"].unique()[
                 0] == "=="
 
-
     @parameterized.expand(
-        list(
-            itertools.product(
-                estimators_to_test,
-                sklearn_checks_to_run(),
-            )))
+        list(itertools.product(
+            estimators_to_test,
+            sklearn_checks_to_run(),
+        )))
     def testSklearnIntegration(self, estimator, check):
         estimator = estimator()
         estimator.set_params(local_listen_port=18000, time_out=5)
         name = type(estimator).__name__
         check(name, estimator)
-
 
 
 if __name__ == "__main__":

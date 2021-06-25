@@ -11,8 +11,8 @@
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -25,22 +25,12 @@
 # License:
 # https://github.com/microsoft/LightGBM/blob/c3b9363d02564625332583e166e3ab3135f436e3/LICENSE
 
+from typing import (Optional, Dict, Union, Type, Any, List, Callable)
 
-from typing import Optional, Dict, Union, Type, Any, List, Callable, Iterable, Tuple
-import numpy as np
-import pandas as pd
-from copy import deepcopy
-
-from lightgbm import LGBMModel, LGBMClassifier, LGBMRegressor, LGBMRanker
-from lightgbm.basic import LightGBMError, _choose_param_value
-from lightgbm.compat import (
-    SKLEARN_INSTALLED, LGBMNotFittedError, _LGBMAssertAllFinite,
-    _LGBMCheckArray, _LGBMCheckClassificationTargets, _LGBMCheckSampleWeight,
-    _LGBMCheckXY, _LGBMClassifierBase, _LGBMComputeSampleWeight,
-    _LGBMLabelEncoder, _LGBMModelBase, _LGBMRegressorBase, dt_DataTable,
-    pd_DataFrame)
-
-from xgboost_ray.sklearn import _wrap_evaluation_matrices, _check_if_params_are_ray_dmatrix
+from lightgbm import LGBMModel, LGBMClassifier, LGBMRegressor  # LGBMRanker
+from lightgbm.basic import _choose_param_value
+from xgboost_ray.sklearn import (_wrap_evaluation_matrices,
+                                 _check_if_params_are_ray_dmatrix)
 from lightgbm_ray.main import train, predict, RayDMatrix, RayParams
 
 import logging
@@ -68,19 +58,17 @@ class _RayLGBMModel:
                  _remote: Optional[bool] = None,
                  ray_dmatrix_params: Optional[Dict] = None,
                  **kwargs: Any) -> "_RayLGBMModel":
-        # if not all((DASK_INSTALLED, PANDAS_INSTALLED, SKLEARN_INSTALLED)):
-        #     raise LightGBMError('dask, pandas and scikit-learn are required for lightgbm.dask')
 
         if early_stopping_rounds is not None:
             raise RuntimeError(
-                'early_stopping_rounds is not currently supported in lightgbm-ray'
-            )
+                "early_stopping_rounds is not currently supported in "
+                "lightgbm-ray")
 
         if eval_names:
             if len(eval_names) != len(eval_set):
                 raise ValueError(
-                    f"Length of `eval_names` ({len(eval_names)}) doesn't match the length of `eval_set` ({len(eval_set)})"
-                )
+                    f"Length of `eval_names` ({len(eval_names)}) doesn't "
+                    f"match the length of `eval_set` ({len(eval_set)})")
 
         params = self.get_params(True)
 
@@ -244,7 +232,9 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             **kwargs)
 
     def to_local(self) -> LGBMClassifier:
-        """Create regular version of lightgbm.LGBMClassifier from the distributed version.
+        """Create regular version of lightgbm.LGBMClassifier from the
+        distributed version.
+
         Returns
         -------
         model : lightgbm.LGBMClassifier
@@ -304,7 +294,9 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
             **kwargs)
 
     def to_local(self) -> LGBMRegressor:
-        """Create regular version of lightgbm.LGBMRegressor from the distributed version.
+        """Create regular version of lightgbm.LGBMRegressor from the
+        distributed version.
+
         Returns
         -------
         model : lightgbm.LGBMRegressor
