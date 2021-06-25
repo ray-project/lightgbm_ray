@@ -48,7 +48,7 @@ from sklearn.utils import _safe_indexing
 
 data_output = [
     "array", "dataframe", "dataframe-with-categorical",
-    "raydmatrix-interleaved", "raydmatrix-batch"
+    "raydmatrix-interleaved", #"raydmatrix-batch"
 ]
 boosting_types = ["gbdt"]  # "dart", "goss", "rf"]
 distributed_training_algorithms = ["data", "voting"]
