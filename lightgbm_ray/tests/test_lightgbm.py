@@ -509,6 +509,8 @@ class LGBMRayTest(unittest.TestCase):
 
     @parameterized.expand(list(itertools.product(data_output, [.1, .5, .9])))
     def testRegressorQuantile(self, output, alpha):
+        ray.init(num_cpus=4, num_gpus=0)
+
         X, y, w, _, dX, dy, dw, _, dX_test, dy_test, dw_test = _create_data(
             objective="regression", output=output)
 
