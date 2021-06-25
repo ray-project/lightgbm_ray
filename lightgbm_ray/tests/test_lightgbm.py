@@ -172,10 +172,11 @@ class LGBMRayTest(unittest.TestCase):
         X, y, w, _, dX, dy, dw, _, dX_test, dy_test, dw_test = _create_data(
             objective=task, output=output)
 
+        eval_weights = [dw_test]
         if dy_test is None:
             dy_test = "test"
+            eval_weights = None
         eval_set = [(dX_test, dy_test)]
-        eval_weights = dw_test
 
         params = {
             "boosting_type": boosting_type,
@@ -209,10 +210,18 @@ class LGBMRayTest(unittest.TestCase):
         s1 = accuracy_score(y, p1)
 
         local_classifier = lgb.LGBMClassifier(**params)
-        local_classifier.fit(X, y, sample_weight=w)
-        p2 = local_classifier.predict(X)
-        p2_proba = local_classifier.predict_proba(X)
-        s2 = local_classifier.score(X, y)
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+        local_classifier.fit(lX, ly, sample_weight=lw)
+        p2 = local_classifier.predict(lX)
+        p2_proba = local_classifier.predict_proba(lX)
+        s2 = local_classifier.score(lX, ly)
 
         if boosting_type == "rf":
             # https://github.com/microsoft/LightGBM/issues/4118
@@ -269,9 +278,17 @@ class LGBMRayTest(unittest.TestCase):
             dX, pred_contrib=True, ray_params=self.ray_params)
 
         local_classifier = lgb.LGBMClassifier(**params)
-        local_classifier.fit(X, y, sample_weight=w)
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+        local_classifier.fit(lX, ly, sample_weight=lw)
         local_preds_with_contrib = local_classifier.predict(
-            X, pred_contrib=True)
+            lX, pred_contrib=True)
 
         # be sure LightGBM actually used at least one categorical column,
         # and that it was correctly treated as a categorical feature
@@ -326,10 +343,11 @@ class LGBMRayTest(unittest.TestCase):
         X, y, w, _, dX, dy, dw, _, dX_test, dy_test, dw_test = _create_data(
             objective="regression", output=output)
 
+        eval_weights = [dw_test]
         if dy_test is None:
             dy_test = "test"
+            eval_weights = None
         eval_set = [(dX_test, dy_test)]
-        eval_weights = dw_test
 
         params = {
             "boosting_type": boosting_type,
@@ -362,9 +380,17 @@ class LGBMRayTest(unittest.TestCase):
         s1_local = ray_regressor.to_local().score(X, y)
 
         local_regressor = lgb.LGBMRegressor(**params)
-        local_regressor.fit(X, y, sample_weight=w)
-        s2 = local_regressor.score(X, y)
-        p2 = local_regressor.predict(X)
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+        local_regressor.fit(lX, ly, sample_weight=lw)
+        s2 = local_regressor.score(lX, ly)
+        p2 = local_regressor.predict(lX)
 
         # Scores should be the same
         self.assertTrue(np.allclose(s1, s2, atol=0.01))
