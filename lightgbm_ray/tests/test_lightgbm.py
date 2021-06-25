@@ -436,8 +436,8 @@ class LGBMRayTest(unittest.TestCase):
         assert np.min(pred_leaf_vals) >= 0
         assert len(np.unique(pred_leaf_vals)) <= params["num_leaves"]
 
-        self.assertTrue(np.allclose(p1, y, rtol=0.5, atol=50.))
-        self.assertTrue(np.allclose(p2, y, rtol=0.5, atol=50.))
+        self.assertTrue(np.allclose(p2, ly, rtol=0.5, atol=50.))
+        self.assertTrue(np.allclose(p1, ly, rtol=0.5, atol=50.))
 
         # be sure LightGBM actually used at least one categorical column,
         # and that it was correctly treated as a categorical feature
