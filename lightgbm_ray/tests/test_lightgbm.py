@@ -141,7 +141,12 @@ def _create_data(objective, n_samples=2000, output="array", **kwargs):
         return dX, dy, dw
 
     X_train, X_test, y_train, y_test, weights_train, weights_test = (
-        train_test_split(X, y, weights, test_size=0.5))
+        train_test_split(
+            X,
+            y,
+            weights,
+            test_size=0.5,
+            stratify=y if objective.endswith("classification") else None))
 
     dX, dy, dw = convert_data(X_train, y_train, weights_train)
     dX_test, dy_test, dw_test = convert_data(X_test, y_test, weights_test)
@@ -178,6 +183,15 @@ class LGBMRayTest(unittest.TestCase):
             eval_weights = None
         eval_set = [(dX_test, dy_test)]
 
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+
         params = {
             "boosting_type": boosting_type,
             "tree_learner": tree_learner,
@@ -206,18 +220,10 @@ class LGBMRayTest(unittest.TestCase):
         p1_proba = ray_classifier.predict_proba(dX, ray_params=self.ray_params)
         p1_pred_leaf = ray_classifier.predict(
             dX, pred_leaf=True, ray_params=self.ray_params)
-        p1_local = ray_classifier.to_local().predict(X)
-        s1 = accuracy_score(y, p1)
+        p1_local = ray_classifier.to_local().predict(lX)
+        s1 = accuracy_score(ly, p1)
 
         local_classifier = lgb.LGBMClassifier(**params)
-        if "raydmatrix" in output:
-            lX = X
-            ly = y
-            lw = w
-        else:
-            lX = dX
-            ly = dy
-            lw = dw
         local_classifier.fit(lX, ly, sample_weight=lw)
         p2 = local_classifier.predict(lX)
         p2_proba = local_classifier.predict_proba(lX)
@@ -230,16 +236,16 @@ class LGBMRayTest(unittest.TestCase):
         else:
             self.assertTrue(np.allclose(s1, s2))
             self.assertTrue(np.allclose(p1, p2))
-            self.assertTrue(np.allclose(p1, y))
-            self.assertTrue(np.allclose(p2, y))
+            self.assertTrue(np.allclose(p1, ly))
+            self.assertTrue(np.allclose(p2, ly))
             self.assertTrue(np.allclose(p1_proba, p2_proba, atol=0.03))
             self.assertTrue(np.allclose(p1_local, p2))
-            self.assertTrue(np.allclose(p1_local, y))
+            self.assertTrue(np.allclose(p1_local, ly))
 
         # pref_leaf values should have the right shape
         # and values that look like valid tree nodes
         pred_leaf_vals = p1_pred_leaf
-        assert pred_leaf_vals.shape == (X.shape[0],
+        assert pred_leaf_vals.shape == (lX.shape[0],
                                         ray_classifier.booster_.num_trees())
         assert np.max(pred_leaf_vals) <= params["num_leaves"]
         assert np.min(pred_leaf_vals) >= 0
@@ -349,6 +355,15 @@ class LGBMRayTest(unittest.TestCase):
             eval_weights = None
         eval_set = [(dX_test, dy_test)]
 
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+
         params = {
             "boosting_type": boosting_type,
             "random_state": 42,
@@ -375,19 +390,11 @@ class LGBMRayTest(unittest.TestCase):
         p1_pred_leaf = ray_regressor.predict(
             dX, pred_leaf=True, ray_params=self.ray_params)
 
-        s1 = r2_score(y, p1)
-        p1_local = ray_regressor.to_local().predict(X)
-        s1_local = ray_regressor.to_local().score(X, y)
+        s1 = r2_score(ly, p1)
+        p1_local = ray_regressor.to_local().predict(lX)
+        s1_local = ray_regressor.to_local().score(lX, ly)
 
         local_regressor = lgb.LGBMRegressor(**params)
-        if "raydmatrix" in output:
-            lX = X
-            ly = y
-            lw = w
-        else:
-            lX = dX
-            ly = dy
-            lw = dw
         local_regressor.fit(lX, ly, sample_weight=lw)
         s2 = local_regressor.score(lX, ly)
         p2 = local_regressor.predict(lX)
@@ -402,7 +409,7 @@ class LGBMRayTest(unittest.TestCase):
         # pref_leaf values should have the right shape
         # and values that look like valid tree nodes
         pred_leaf_vals = p1_pred_leaf
-        assert pred_leaf_vals.shape == (X.shape[0],
+        assert pred_leaf_vals.shape == (lX.shape[0],
                                         ray_regressor.booster_.num_trees())
         assert np.max(pred_leaf_vals) <= params["num_leaves"]
         assert np.min(pred_leaf_vals) >= 0
@@ -430,6 +437,15 @@ class LGBMRayTest(unittest.TestCase):
         X, y, w, _, dX, dy, dw, _, dX_test, dy_test, dw_test = _create_data(
             objective="regression", output=output)
 
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+
         params = {"n_estimators": 10, "num_leaves": 10}
 
         ray_regressor = RayLGBMRegressor(tree_learner="data", **params)
@@ -439,15 +455,15 @@ class LGBMRayTest(unittest.TestCase):
             dX, pred_contrib=True, ray_params=self.ray_params)
 
         local_regressor = lgb.LGBMRegressor(**params)
-        local_regressor.fit(X, y, sample_weight=w)
+        local_regressor.fit(lX, ly, sample_weight=w)
         local_preds_with_contrib = local_regressor.predict(
-            X, pred_contrib=True)
+            lX, pred_contrib=True)
 
         # contrib outputs for distributed training are different than
         # from local training, so we can just test
         # that the output has the right shape and base values are in
         # the right position
-        num_features = X.shape[1]
+        num_features = lX.shape[1]
         assert preds_with_contrib.shape[1] == num_features + 1
         assert preds_with_contrib.shape == local_preds_with_contrib.shape
 
@@ -476,17 +492,26 @@ class LGBMRayTest(unittest.TestCase):
             "num_leaves": 10
         }
 
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+
         ray_regressor = RayLGBMRegressor(
             tree_learner_type="data_parallel", **params)
         ray_regressor = ray_regressor.fit(
             dX, dy, sample_weight=dw, ray_params=self.ray_params)
         p1 = ray_regressor.predict(dX, ray_params=self.ray_params)
-        q1 = np.count_nonzero(y < p1) / y.shape[0]
+        q1 = np.count_nonzero(ly < p1) / ly.shape[0]
 
         local_regressor = lgb.LGBMRegressor(**params)
-        local_regressor.fit(X, y, sample_weight=w)
-        p2 = local_regressor.predict(X)
-        q2 = np.count_nonzero(y < p2) / y.shape[0]
+        local_regressor.fit(lX, ly, sample_weight=lw)
+        p2 = local_regressor.predict(lX)
+        q2 = np.count_nonzero(ly < p2) / ly.shape[0]
 
         # Quantiles should be right
         np.testing.assert_allclose(q1, alpha, atol=0.2)
