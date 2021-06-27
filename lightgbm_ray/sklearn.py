@@ -37,8 +37,60 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_RAY_PARAMS_DOC = """
+    ray_params : RayParams or dict, optional (default=None)
+        Parameters to configure Ray-specific behavior.
+        See :class:`RayParams` for a list of valid configuration parameters.
+        Will override ``n_jobs`` attribute with own ``num_actors`` parameter.
+    _remote : bool, optional (default=False)
+        Whether to run the driver process in a remote function.
+        This is enabled by default in Ray client mode.
+    ray_dmatrix_params : dict, optional (default=None)
+        Dict of parameters (such as sharding mode) passed to the internal
+        RayDMatrix initialization."""
+
+_N_JOBS_DOC_REPLACE = (
+    """        n_jobs : int, optional (default=-1)
+            Number of parallel threads.""",  # noqa: E501, W291
+    """        n_jobs : int, optional (default=1)
+            Number of Ray actors used to run LightGBM in parallel.
+            In order to set number of threads per actor, pass a :class:`RayParams`
+            object to the relevant method as a ``ray_params`` argument. Will be
+            overriden by the ``num_actors`` parameter of ``ray_params`` argument
+            should it be passed to a method.""",  # noqa: E501, W291
+)
+
+
+def _treat_estimator_doc(doc: str) -> str:
+    """Helper function to make nececssary changes in estimator docstrings"""
+    doc = doc.replace(*_N_JOBS_DOC_REPLACE).replace(
+        "Construct a gradient boosting model.",
+        "Construct a gradient boosting model distributed on Ray.")
+    return doc
+
+
+def _treat_method_doc(doc: str, insert_before: str) -> str:
+    """Helper function to make changes in estimator method docstrings"""
+    doc = doc[:doc.find(insert_before)] + _RAY_PARAMS_DOC + doc[doc.find(
+        insert_before):]
+    return doc
+
 
 class _RayLGBMModel:
+    def _ray_set_ray_params_n_jobs(
+            self, ray_params: Optional[Union[RayParams, dict]],
+            n_jobs: Optional[int]) -> RayParams:
+        """Helper function to set num_actors in ray_params if not
+        set by the user"""
+        if ray_params is None:
+            if not n_jobs or n_jobs < 1:
+                n_jobs = 1
+            ray_params = RayParams(num_actors=n_jobs)
+        elif n_jobs is not None:
+            logger.warn("`ray_params` is not `None` and will override "
+                        "the `n_jobs` attribute.")
+        return ray_params
+
     def _ray_fit(self,
                  model_factory: Type[LGBMModel],
                  X,
@@ -71,6 +123,9 @@ class _RayLGBMModel:
                     f"match the length of `eval_set` ({len(eval_set)})")
 
         params = self.get_params(True)
+
+        ray_params = self._ray_set_ray_params_n_jobs(ray_params,
+                                                     params["n_jobs"])
 
         params = _choose_param_value(
             main_param_name="n_estimators", params=params, default_value=100)
@@ -132,6 +187,10 @@ class _RayLGBMModel:
                      _remote: Optional[bool] = None,
                      ray_dmatrix_params: Optional[Dict],
                      **kwargs):
+        params = self.get_params(True)
+        ray_params = self._ray_set_ray_params_n_jobs(ray_params,
+                                                     params["n_jobs"])
+
         ray_dmatrix_params = ray_dmatrix_params or {}
         if not isinstance(X, RayDMatrix):
             test = RayDMatrix(X, **ray_dmatrix_params)
@@ -199,6 +258,9 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             ray_dmatrix_params=ray_dmatrix_params,
             **kwargs)
 
+    fit.__doc__ = _treat_method_doc(LGBMClassifier.fit.__doc__,
+                                    "\n\n    Returns")
+
     def predict_proba(self,
                       X,
                       *,
@@ -214,6 +276,9 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             _remote=_remote,
             ray_dmatrix_params=ray_dmatrix_params,
             **kwargs)
+
+    predict_proba.__doc__ = _treat_method_doc(
+        LGBMClassifier.predict_proba.__doc__, "\n    **kwargs")
 
     def predict(self,
                 X,
@@ -231,6 +296,9 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             ray_dmatrix_params=ray_dmatrix_params,
             **kwargs)
 
+    predict.__doc__ = _treat_method_doc(LGBMClassifier.predict.__doc__,
+                                        "\n    **kwargs")
+
     def to_local(self) -> LGBMClassifier:
         """Create regular version of lightgbm.LGBMClassifier from the
         distributed version.
@@ -241,6 +309,10 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             Local underlying model.
         """
         return self._lgb_ray_to_local(LGBMClassifier)
+
+
+RayLGBMClassifier.__init__.__doc__ = _treat_estimator_doc(
+    LGBMClassifier.__init__.__doc__)
 
 
 class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
@@ -277,6 +349,9 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
             ray_dmatrix_params=ray_dmatrix_params,
             **kwargs)
 
+    fit.__doc__ = _treat_method_doc(LGBMRegressor.fit.__doc__,
+                                    "\n\n    Returns")
+
     def predict(self,
                 X,
                 *,
@@ -293,6 +368,9 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
             ray_dmatrix_params=ray_dmatrix_params,
             **kwargs)
 
+    predict.__doc__ = _treat_method_doc(LGBMRegressor.predict.__doc__,
+                                        "\n    **kwargs")
+
     def to_local(self) -> LGBMRegressor:
         """Create regular version of lightgbm.LGBMRegressor from the
         distributed version.
@@ -303,3 +381,7 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
             Local underlying model.
         """
         return self._lgb_ray_to_local(LGBMRegressor)
+
+
+RayLGBMRegressor.__init__.__doc__ = _treat_estimator_doc(
+    RayLGBMRegressor.__init__.__doc__)
