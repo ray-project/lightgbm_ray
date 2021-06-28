@@ -293,6 +293,11 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             "Actor 0: Before loading\n"
             "Actor 0: After loading\n"
             "Actor 0: Before predict\n"
+            "Actor 0: After predict\n"
+            "Actor 0: Init\n"
+            "Actor 0: Before loading\n"
+            "Actor 0: After loading\n"
+            "Actor 0: Before predict\n"
             "Actor 0: After predict\n")
         shutil.rmtree(tmpdir)
 
