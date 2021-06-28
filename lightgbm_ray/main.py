@@ -979,7 +979,7 @@ def train(
         # "feature", "feature_parallel",
     }
     if params["tree_learner"] not in allowed_tree_learners:
-        logger.warning(
+        warnings.warn(
             f"Parameter tree_learner set to {params['tree_learner']},"
             " which is not allowed. Using 'data' as default")
         params["tree_learner"] = "data"
@@ -987,11 +987,11 @@ def train(
     for param_alias in _ConfigAliases.get("num_machines", "num_threads",
                                           "num_iterations", "n_estimators"):
         if param_alias in params:
-            logger.warning(f"Parameter {param_alias} will be ignored.")
+            warnings.warn(f"Parameter {param_alias} will be ignored.")
             params.pop(param_alias)
 
     if gpus_per_actor > 0 and params["device_type"] == "cpu":
-        logger.warning(
+        warnings.warn(
             f"GPUs have been assigned to the actors, but the current LightGBM "
             f"device type is set to 'cpu'. Thus, GPUs will "
             f"currently not be used. To enable GPUs usage, please set the "
