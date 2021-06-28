@@ -73,9 +73,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    if args.smoke_test:
-        ray.init(num_cpus=args.num_actors)
-    elif args.server_address:
+    if args.server_address:
         ray.util.connect(args.server_address)
     elif args.address:
         ray.init(address=args.address)
