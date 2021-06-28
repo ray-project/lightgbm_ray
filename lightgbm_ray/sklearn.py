@@ -28,11 +28,12 @@
 from typing import (Optional, Dict, Union, Type, Any, List, Callable)
 
 from lightgbm import LGBMModel, LGBMClassifier, LGBMRegressor  # LGBMRanker
-from lightgbm.basic import _choose_param_value
+from lightgbm.basic import _choose_param_value, _ConfigAliases
 from xgboost_ray.sklearn import (_wrap_evaluation_matrices,
                                  _check_if_params_are_ray_dmatrix)
 from lightgbm_ray.main import train, predict, RayDMatrix, RayParams
 
+import warnings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -87,8 +88,8 @@ class _RayLGBMModel:
                 n_jobs = 1
             ray_params = RayParams(num_actors=n_jobs)
         elif n_jobs is not None:
-            logger.warn("`ray_params` is not `None` and will override "
-                        "the `n_jobs` attribute.")
+            warnings.warn("`ray_params` is not `None` and will override "
+                          "the `n_jobs` attribute.")
         return ray_params
 
     def _ray_fit(self,
@@ -161,6 +162,9 @@ class _RayLGBMModel:
         if eval_names:
             evals = [(eval_tuple[0], eval_names[i])
                      for i, eval_tuple in enumerate(evals)]
+
+        for param in _ConfigAliases.get("n_jobs"):
+            params.pop(param, None)
 
         model = train(
             dtrain=train_dmatrix,

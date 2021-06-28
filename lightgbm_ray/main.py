@@ -33,14 +33,14 @@ import time
 import logging
 import os
 import threading
+import warnings
 # import traceback
 
 import numpy as np
 import pandas as pd
 
-from lightgbm import LGBMModel, LGBMRanker
-from lightgbm.basic import _choose_param_value, _ConfigAliases
-from lightgbm.basic import LightGBMError
+from lightgbm import LGBMModel, LGBMRanker, Booster
+from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError
 from lightgbm.callback import CallbackEnv
 
 import ray
@@ -48,10 +48,10 @@ import ray
 from xgboost_ray.main import (
     _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix,
     concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback,
-    STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams,
-    _TrainingState, _is_client_connected, is_session_enabled,
-    force_on_current_node, _assert_ray_support, _validate_ray_params,
-    _maybe_print_legacy_warning, _autodetect_resources, _Checkpoint,
+    STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams as
+    RayXGBParams, _TrainingState, _is_client_connected, is_session_enabled,
+    force_on_current_node, _assert_ray_support, _ray_get_cluster_cpus,
+    _maybe_print_legacy_warning, _Checkpoint, _get_min_node_cpus,
     _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY,
     RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError,
     _create_placement_group, _shutdown, PlacementGroup, ActorHandle,
@@ -68,6 +68,88 @@ ELASTIC_RESTART_DISABLED = True
 
 class StopException(Exception):
     pass
+
+
+def _check_cpus_per_actor_at_least_2(cpus_per_actor: int,
+                                     suppress_exception: bool):
+    if cpus_per_actor < 2:
+        if suppress_exception:
+            warnings.warn("cpus_per_actor is set to less than 2. Distributed"
+                          " LightGBM needs at least 2 CPUs per actor to "
+                          "train efficiently. This may lead to a "
+                          "degradation of performance during training.")
+        else:
+            raise ValueError(
+                "cpus_per_actor is set to less than 2. Distributed"
+                " LightGBM needs at least 2 CPUs per actor to "
+                "train efficiently. You can suppress this "
+                "exception by setting allow_less_than_two_cpus "
+                "to True.")
+
+
+class RayParams(RayXGBParams):
+    allow_less_than_two_cpus: bool = False
+
+    __doc__ = RayXGBParams.__doc__.replace(
+        """        elastic_training (bool): If True, training will continue with
+            fewer actors if an actor fails. Default False.""",
+        """        allow_less_than_two_cpus (bool): If True, an exception will not
+            be raised if `cpus_per_actor`. Default False."""
+    ).replace(
+        """cpus_per_actor (int): Number of CPUs to be used per Ray actor.""",
+        """cpus_per_actor (int): Number of CPUs to be used per Ray actor.
+            If smaller than 2, training might be substantially slower
+            because communication work and training work will block
+            each other. This will raise an exception unless
+            `allow_less_than_two_cpus` is True.""")
+
+    def get_tune_resources(self):
+        _check_cpus_per_actor_at_least_2(self.cpus_per_actor,
+                                         self.allow_less_than_two_cpus)
+        return super().get_tune_resources()
+
+
+def _validate_ray_params(ray_params: Union[None, RayParams, dict]) \
+        -> RayParams:
+    if ray_params is None:
+        ray_params = RayParams()
+    elif isinstance(ray_params, dict):
+        ray_params = RayParams(**ray_params)
+    elif not isinstance(ray_params, RayParams):
+        raise ValueError(
+            f"`ray_params` must be a `RayParams` instance, a dict, or None, "
+            f"but it was {type(ray_params)}."
+            f"\nFIX THIS preferably by passing a `RayParams` instance as "
+            f"the `ray_params` parameter.")
+    if ray_params.num_actors < 2:
+        warnings.warn(
+            f"`num_actors` in `ray_params` is smaller than 2 "
+            f"({ray_params.num_actors}). LightGBM will NOT be distributed!")
+    return ray_params
+
+
+def _autodetect_resources(ray_params: RayParams,
+                          use_tree_method: bool = False) -> Tuple[int, int]:
+    gpus_per_actor = ray_params.gpus_per_actor
+    cpus_per_actor = ray_params.cpus_per_actor
+
+    # Automatically set gpus_per_actor if left at the default value
+    if gpus_per_actor == -1:
+        gpus_per_actor = 0
+        if use_tree_method:
+            gpus_per_actor = 1
+
+    # Automatically set cpus_per_actor if left at the default value
+    # Will be set to the number of cluster CPUs divided by the number of
+    # actors, bounded by the minimum number of CPUs across actors nodes.
+    if cpus_per_actor <= 0:
+        cluster_cpus = _ray_get_cluster_cpus() or 1
+        cpus_per_actor = max(
+            2,
+            min(
+                int(_get_min_node_cpus() or 2),
+                int(cluster_cpus // ray_params.num_actors)))
+    return cpus_per_actor, gpus_per_actor
 
 
 def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
@@ -353,7 +435,7 @@ class RayLightGBMActor(RayXGBoostActor):
         return result_dict
 
     def predict(self,
-                model: LGBMModel,
+                model: Union[LGBMModel, Booster],
                 data: RayDMatrix,
                 method="predict",
                 **kwargs):
@@ -454,6 +536,9 @@ def _train(params: Dict,
                 "parameter or a higher number for `cpus_per_actor`.")
     else:
         params["n_jobs"] = cpus_per_actor
+
+    _check_cpus_per_actor_at_least_2(params["n_jobs"],
+                                     ray_params.allow_less_than_two_cpus)
 
     # This is a callback that handles actor failures.
     # We identify the rank of the failed actor, add this to a set of
@@ -870,6 +955,12 @@ def train(
                          "Please disable elastic_training in RayParams in "
                          "order to use lightgbm_ray.")
 
+    params = _choose_param_value(
+        main_param_name="tree_learner", params=params, default_value="data")
+
+    params = _choose_param_value(
+        main_param_name="device_type", params=params, default_value="cpu")
+
     if added_tune_callback:
         # Don't autodetect resources when used with Tune.
         cpus_per_actor = ray_params.cpus_per_actor
@@ -877,15 +968,9 @@ def train(
     else:
         cpus_per_actor, gpus_per_actor = _autodetect_resources(
             ray_params=ray_params,
-            use_tree_method="tree_method" in params
-            and params["tree_method"] is not None
-            and params["tree_method"].startswith("gpu"))
-
-    params = _choose_param_value(
-        main_param_name="tree_learner", params=params, default_value="data")
-
-    params = _choose_param_value(
-        main_param_name="device_type", params=params, default_value="cpu")
+            use_tree_method="device_type" in params
+            and params["device_type"] is not None
+            and params["device_type"] != "cpu")
 
     allowed_tree_learners = {
         "data", "data_parallel", "voting", "voting_parallel"
@@ -1178,7 +1263,7 @@ def _predict(model: LGBMModel, data: RayDMatrix, method: str,
     return combine_data(data.sharding, actor_results)
 
 
-def predict(model: LGBMModel,
+def predict(model: Union[LGBMModel, Booster],
             data: RayDMatrix,
             method: str = "predict",
             ray_params: Union[None, RayParams, Dict] = None,
@@ -1192,7 +1277,8 @@ def predict(model: LGBMModel,
     returned.
 
     Args:
-        model (LGBMModel): Model object to call for prediction.
+        model (Union[LGBMModel, Booster]): Model or booster object to
+            call for prediction.
         data (RayDMatrix): Data object containing the prediction data.
         method (str): Name of estimator method to use for prediction.
         ray_params (Union[None, RayParams, Dict]): Parameters to configure
