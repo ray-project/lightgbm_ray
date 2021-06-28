@@ -99,6 +99,6 @@ if __name__ == "__main__":
     elif args.address:
         ray.init(address=args.address)
     else:
-        ray.init(num_cpus=args.num_actors*args.cpus_per_actor)
+        ray.init(num_cpus=args.num_actors * args.cpus_per_actor)
 
     main(args.cpus_per_actor, args.num_actors)
