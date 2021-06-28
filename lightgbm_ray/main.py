@@ -786,6 +786,9 @@ def train(
         model_factory: Type[LGBMModel] = LGBMModel,
         num_boost_round: int = 10,
         *args,
+        valid_sets: Optional[List[RayDMatrix]] = None,
+        valid_names: Optional[List[str]] = None,
+        verbose_eval: Union[bool, int] = True,
         evals: Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix, str]] = (
         ),
         evals_result: Optional[Dict] = None,
@@ -838,9 +841,26 @@ def train(
         params (Dict): parameter dict passed to ``LGBMModel``
         dtrain (RayDMatrix): Data object containing the training data.
         model_factory (Type[LGBMModel]) Model class to use for training.
+        valid_sets (Optional[List[RayDMatrix]]):
+            List of data to be evaluated on during training.
+            Mutually exclusive with ``evals``.
+        valid_names Optional[List[str]]:
+            Names of ``valid_sets``.
         evals (Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix, str]]):
             ``evals`` tuple passed to ``LGBMModel.fit()``.
+            Mutually exclusive with ``valid_sets``.
         evals_result (Optional[Dict]): Dict to store evaluation results in.
+        verbose_eval (Union[bool, int]):
+            Requires at least one validation data.
+            If True, the eval metric on the valid set is printed at each
+            boosting stage.
+            If int, the eval metric on the valid set is printed at every
+            ``verbose_eval`` boosting stage.
+            The last boosting stage or the boosting stage found by using
+            ``early_stopping_rounds`` is also printed.
+            With ``verbose_eval`` = 4 and at least one item in ``valid_sets``,
+            an evaluation metric is printed every 4 (instead of 1) boosting
+            stages.
         additional_results (Optional[Dict]): Dict to store additional results.
         ray_params (Union[None, RayParams, Dict]): Parameters to configure
             Ray-specific behavior. See :class:`RayParams` for a list of valid
@@ -848,7 +868,7 @@ def train(
         _remote (bool): Whether to run the driver process in a remote
             function. This is enabled by default in Ray client mode.
         **kwargs: Keyword arguments will be passed to the local
-            `xgb.train()` calls.
+            `model_factory.fit()` calls.
 
     Returns: An ``LGBMModel`` object.
     """
@@ -873,6 +893,7 @@ def train(
                 num_boost_round=num_boost_round,
                 evals_result=_evals_result,
                 additional_results=_additional_results,
+                verbose_eval=verbose_eval,
                 **kwargs)
             return bst, _evals_result, _additional_results
 
@@ -884,6 +905,8 @@ def train(
                 params,
                 dtrain,
                 *args,
+                valid_sets=valid_sets,
+                valid_names=valid_names,
                 evals=evals,
                 ray_params=ray_params,
                 _remote=False,
@@ -895,13 +918,15 @@ def train(
             additional_results.update(train_additional_results)
         return bst
 
-    _maybe_print_legacy_warning()
-
     start_time = time.time()
 
     ray_params = _validate_ray_params(ray_params)
 
     params = params.copy()
+
+    if evals and valid_sets:
+        raise ValueError(
+            "Specifying both `evals` and `valid_sets` is ambiguous.")
 
     # capture whether local_listen_port or its aliases were provided
     listen_port_in_params = any(
@@ -990,6 +1015,9 @@ def train(
             warnings.warn(f"Parameter {param_alias} will be ignored.")
             params.pop(param_alias)
 
+    if not ("verbose" in kwargs and verbose_eval is True):
+        kwargs["verbose"] = verbose_eval
+
     if gpus_per_actor > 0 and params["device_type"] == "cpu":
         warnings.warn(
             f"GPUs have been assigned to the actors, but the current LightGBM "
@@ -1025,14 +1053,30 @@ def train(
     if not dtrain.loaded and not dtrain.distributed:
         dtrain.load_data(ray_params.num_actors)
 
-    for (deval, name) in evals:
-        if not deval.has_label:
-            raise ValueError(
-                "Evaluation data has no label set. Please make sure to set "
-                "the `label` argument when initializing `RayDMatrix()` "
-                "for data you would like to evaluate on.")
-        if not deval.loaded and not deval.distributed:
-            deval.load_data(ray_params.num_actors)
+    if valid_sets is not None:
+        evals = []
+        if isinstance(valid_sets, RayDMatrix):
+            valid_sets = [valid_sets]
+        if isinstance(valid_names, str):
+            valid_names = [valid_names]
+        for i, valid_data in enumerate(valid_sets):
+            if valid_names is not None and len(valid_names) > i:
+                evals.append((valid_data, valid_names[i]))
+            else:
+                evals.append((valid_data, f"valid_{i}"))
+
+    if evals:
+        for (deval, name) in evals:
+            if not isinstance(deval, RayDMatrix):
+                raise TypeError("Evaluation data must be a `RayDMatrix`, got "
+                                f"{type(deval)}.")
+            if not deval.has_label:
+                raise ValueError(
+                    "Evaluation data has no label set. Please make sure to set"
+                    " the `label` argument when initializing `RayDMatrix()` "
+                    "for data you would like to evaluate on.")
+            if not deval.loaded and not deval.distributed:
+                deval.load_data(ray_params.num_actors)
 
     bst = None
     train_evals_result = {}

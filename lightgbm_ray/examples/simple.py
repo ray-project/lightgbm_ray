@@ -30,14 +30,15 @@ def main(cpus_per_actor, num_actors):
     bst = train(
         params=lightgbm_params,
         dtrain=train_set,
-        evals=[(test_set, "eval")],
+        valid_sets=[test_set],
+        valid_names=["eval"],
         evals_result=evals_result,
         ray_params=RayParams(
             max_actor_restarts=0,
             gpus_per_actor=0,
             cpus_per_actor=cpus_per_actor,
             num_actors=num_actors),
-        verbose=False,
+        verbose_eval=False,
         num_boost_round=10)
 
     model_path = "simple.lgbm"
@@ -62,12 +63,12 @@ if __name__ == "__main__":
         "--cpus-per-actor",
         type=int,
         default=2,
-        help="Sets number of CPUs per xgboost training worker.")
+        help="Sets number of CPUs per lightgbm training worker.")
     parser.add_argument(
         "--num-actors",
         type=int,
         default=2,
-        help="Sets number of xgboost workers to use.")
+        help="Sets number of lightgbm workers to use.")
     parser.add_argument(
         "--smoke-test", action="store_true", default=False, help="gpu")
 
@@ -78,6 +79,6 @@ if __name__ == "__main__":
     elif args.address:
         ray.init(address=args.address)
     else:
-        ray.init(num_cpus=args.num_actors * args.cpus_per_actor)
+        ray.init(num_cpus=(args.num_actors * args.cpus_per_actor) + 1)
 
     main(args.cpus_per_actor, args.num_actors)

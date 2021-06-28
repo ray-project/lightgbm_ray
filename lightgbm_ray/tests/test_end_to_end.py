@@ -187,9 +187,23 @@ class LGBMRayEndToEndTest(unittest.TestCase):
                                     "cpus_per_actor is set to less than 2"):
             train(
                 self.params,
-                RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH),
+                RayDMatrix(self.x, self.y),
                 num_boost_round=50,
                 ray_params=RayParams(num_actors=2, cpus_per_actor=1))
+
+    def testBothEvalsAndValidSetsRaisesException(self):
+        ray.init(num_cpus=4, num_gpus=0)
+        with self.assertRaisesRegex(
+                ValueError,
+                "Specifying both `evals` and `valid_sets` is ambiguous"):
+            data = RayDMatrix(self.x, self.y),
+            train(
+                self.params,
+                data,
+                num_boost_round=50,
+                ray_params=RayParams(num_actors=2, cpus_per_actor=1),
+                evals=[(data, "eval")],
+                valid_sets=[data])
 
     def testTrainPredict(self, init=True, remote=None, **ray_param_dict):
         """Train with evaluation and predict"""
@@ -208,6 +222,20 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             ray_params=RayParams(
                 num_actors=2, cpus_per_actor=2, **ray_param_dict),
             evals=[(dtrain, "dtrain")],
+            evals_result=evals_result,
+            _remote=remote)
+
+        self.assertTrue("dtrain" in evals_result)
+
+        evals_result = {}
+        bst = train(
+            params,
+            dtrain,
+            num_boost_round=38,
+            ray_params=RayParams(
+                num_actors=2, cpus_per_actor=2, **ray_param_dict),
+            valid_sets=[dtrain],
+            valid_names=["dtrain"],
             evals_result=evals_result,
             _remote=remote)
 

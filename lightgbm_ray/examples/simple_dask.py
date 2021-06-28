@@ -48,7 +48,8 @@ def main(cpus_per_actor, num_actors):
     bst = train(
         params=lightgbm_params,
         dtrain=train_set,
-        evals=[(train_set, "train")],
+        valid_sets=[train_set],
+        valid_names=["train"],
         evals_result=evals_result,
         ray_params=RayParams(
             max_actor_restarts=0,

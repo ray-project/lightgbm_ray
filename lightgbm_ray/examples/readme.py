@@ -16,8 +16,9 @@ def readme_simple():
         },
         train_set,
         evals_result=evals_result,
-        evals=[(train_set, "train")],
-        verbose=False,
+        valid_sets=[train_set],
+        valid_names=["train"],
+        verbose_eval=False,
         ray_params=RayParams(num_actors=2, cpus_per_actor=2))
 
     bst.booster_.save_model("model.lgbm")
