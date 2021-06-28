@@ -1,18 +1,18 @@
-TUNE=1
+TUNE=0
 
-for i in "$@"
-do
-echo "$i"
-case "$i" in
-    --no-tune)
-    TUNE=0
-    ;;
-    *)
-    echo "unknown arg, $i"
-    exit 1
-    ;;
-esac
-done
+# for i in "$@"
+# do
+# echo "$i"
+# case "$i" in
+#     --no-tune)
+#     TUNE=0
+#     ;;
+#     *)
+#     echo "unknown arg, $i"
+#     exit 1
+#     ;;
+# esac
+# done
 
 pushd lightgbm_ray/tests || exit 1
 echo "============="

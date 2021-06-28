@@ -62,9 +62,9 @@ jobs:
     - name: Run tests
       run: |
         bash ./run_ci_tests.sh
-#    - name: Run examples
-#      run: |
-#        bash ./run_ci_examples.sh
+    - name: Run examples
+      run: |
+        bash ./run_ci_examples.sh --no-tune
 
   test_linux_ray_release:
     runs-on: ubuntu-latest
@@ -93,9 +93,9 @@ jobs:
     - name: Run tests
       run: |
         bash ./run_ci_tests.sh
-#    - name: Run examples
-#      run: |
-#        bash ./run_ci_examples.sh
+    - name: Run examples
+      run: |
+        bash ./run_ci_examples.sh --no-tune
 
   test_linux_compat:
     # Test compatibility when some optional libraries are missing
@@ -131,9 +131,9 @@ jobs:
     - name: Run tests
       run: |
         bash ./run_ci_tests.sh --no-tune
-#    - name: Run examples
-#      run: |
-#        bash ./run_ci_examples.sh --no-tune
+    - name: Run examples
+      run: |
+        bash ./run_ci_examples.sh --no-tune
 
   test_linux_cutting_edge:
     # Tests on cutting edge, i.e. latest Ray master, latest LightGBM master
@@ -187,6 +187,6 @@ jobs:
     - name: Run tests
       run: |
         bash ./run_ci_tests.sh
-#    - name: Run examples
-#      run: |
-#        bash ./run_ci_examples.sh
+    - name: Run examples
+      run: |
+        bash ./run_ci_examples.sh --no-tune

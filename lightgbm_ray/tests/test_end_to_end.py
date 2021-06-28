@@ -142,16 +142,14 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         pred_test = np.argmax(bst.predict(test_X), axis=1)
         self.assertSequenceEqual(test_y_second, list(pred_test))
 
-    def testJointTraining(self):
-        """Train with Ray. The data will be split, but the trees
-        should be combined together and find the true model."""
+    def _testJointTraining(self, cpus_per_actor):
         ray.init(num_cpus=4, num_gpus=0)
 
         bst = train(
             self.params,
             RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH),
             num_boost_round=50,
-            ray_params=RayParams(num_actors=2, cpus_per_actor=2))
+            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor))
 
         self.assertEqual(bst.booster_.current_iteration(), 50)
 
@@ -162,9 +160,36 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         pred_y = predict(
             bst,
             RayDMatrix(self.x),
-            ray_params=RayParams(num_actors=2, cpus_per_actor=2))
+            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor))
         pred_y = np.argmax(pred_y, axis=1)
         self.assertSequenceEqual(list(self.y), list(pred_y))
+
+        pred_y = predict(
+            bst.booster_,
+            RayDMatrix(self.x),
+            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor))
+        pred_y = np.argmax(pred_y, axis=1)
+        self.assertSequenceEqual(list(self.y), list(pred_y))
+
+    def testJointTraining(self):
+        """Train with Ray. The data will be split, but the trees
+        should be combined together and find the true model."""
+        return self._testJointTraining(cpus_per_actor=2)
+
+    def testJointTrainingDefaultRayParams(self):
+        """Train with Ray. The data will be split, but the trees
+        should be combined together and find the true model."""
+        return self._testJointTraining(cpus_per_actor=0)
+
+    def testCpusPerActorEqualTo1RaisesException(self):
+        ray.init(num_cpus=4, num_gpus=0)
+        with self.assertRaisesRegex(ValueError,
+                                    "cpus_per_actor is set to less than 2"):
+            train(
+                self.params,
+                RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH),
+                num_boost_round=50,
+                ray_params=RayParams(num_actors=2, cpus_per_actor=1))
 
     def testTrainPredict(self, init=True, remote=None, **ray_param_dict):
         """Train with evaluation and predict"""
