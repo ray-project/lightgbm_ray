@@ -156,7 +156,7 @@ class _RayLGBMModel:
         eval_names = eval_names or []
 
         for i, _ in enumerate(evals):
-            if i < len(eval_names):
+            if len(eval_names) > i:
                 evals[i] = (evals[i][0], eval_names[i])
             else:
                 # _wrap_evaluation_matrices sets default names to
