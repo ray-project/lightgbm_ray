@@ -11,8 +11,8 @@ def readme_simple():
     evals_result = {}
     bst = train(
         {
-        "objective": "binary",
-        "metric": ["binary_logloss", "binary_error"],
+            "objective": "binary",
+            "metric": ["binary_logloss", "binary_error"],
         },
         train_set,
         evals_result=evals_result,
