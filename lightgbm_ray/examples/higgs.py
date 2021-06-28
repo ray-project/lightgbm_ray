@@ -53,7 +53,7 @@ def main():
         config,
         dtrain,
         evals_result=evals_result,
-        ray_params=RayParams(max_actor_restarts=1),
+        ray_params=RayParams(max_actor_restarts=1, num_actors=2),
         num_boost_round=100,
         evals=[(dtrain, "train")])
     taken = time.time() - start
@@ -66,7 +66,7 @@ def main():
 
 if __name__ == "__main__":
     import ray
-    ray.init()
+    ray.init(num_cpus=5)
 
     start = time.time()
     main()
