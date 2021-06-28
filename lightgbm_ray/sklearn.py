@@ -117,12 +117,6 @@ class _RayLGBMModel:
                 "early_stopping_rounds is not currently supported in "
                 "lightgbm-ray")
 
-        if eval_names:
-            if len(eval_names) != len(eval_set):
-                raise ValueError(
-                    f"Length of `eval_names` ({len(eval_names)}) doesn't "
-                    f"match the length of `eval_set` ({len(eval_set)})")
-
         params = self.get_params(True)
 
         ray_params = self._ray_set_ray_params_n_jobs(ray_params,
@@ -159,9 +153,16 @@ class _RayLGBMModel:
                     **ray_dmatrix_params
                 }))
 
-        if eval_names:
-            evals = [(eval_tuple[0], eval_names[i])
-                     for i, eval_tuple in enumerate(evals)]
+        eval_names = eval_names or []
+
+        for i, _ in enumerate(evals):
+            if i < len(eval_names):
+                evals[i] = (evals[i][0], eval_names[i])
+            else:
+                # _wrap_evaluation_matrices sets default names to
+                # `validation_`, but lgbm uses `valid_`, so
+                # we fix that here
+                evals[i] = (evals[i][0], f"valid_{i}")
 
         for param in _ConfigAliases.get("n_jobs"):
             params.pop(param, None)

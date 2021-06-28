@@ -977,8 +977,8 @@ def train(
     # LGBM currently does not support elastic training.
     if ray_params.elastic_training:
         raise ValueError("Elastic Training cannot be used with LightGBM. "
-                         "Please disable elastic_training in RayParams in "
-                         "order to use lightgbm_ray.")
+                         "Please disable elastic_training in `ray_params` "
+                         "in order to use LightGBM-Ray.")
 
     params = _choose_param_value(
         main_param_name="tree_learner", params=params, default_value="data")
@@ -1068,7 +1068,7 @@ def train(
     if evals:
         for (deval, name) in evals:
             if not isinstance(deval, RayDMatrix):
-                raise TypeError("Evaluation data must be a `RayDMatrix`, got "
+                raise ValueError("Evaluation data must be a `RayDMatrix`, got "
                                 f"{type(deval)}.")
             if not deval.has_label:
                 raise ValueError(
