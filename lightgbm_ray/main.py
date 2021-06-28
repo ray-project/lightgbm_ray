@@ -1069,7 +1069,7 @@ def train(
         for (deval, name) in evals:
             if not isinstance(deval, RayDMatrix):
                 raise ValueError("Evaluation data must be a `RayDMatrix`, got "
-                                f"{type(deval)}.")
+                                 f"{type(deval)}.")
             if not deval.has_label:
                 raise ValueError(
                     "Evaluation data has no label set. Please make sure to set"
