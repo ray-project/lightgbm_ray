@@ -173,8 +173,7 @@ class LGBMRayTest(unittest.TestCase):
         self.ray_params = RayParams(num_actors=2, cpus_per_actor=2)
 
     def tearDown(self):
-        if ray.is_initialized:
-            ray.shutdown()
+        ray.shutdown()
 
     @parameterized.expand(
         list(

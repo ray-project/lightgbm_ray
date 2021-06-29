@@ -95,8 +95,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         }
 
     def tearDown(self):
-        if ray.is_initialized:
-            ray.shutdown()
+        ray.shutdown()
 
     def testSingleTraining(self):
         """Test that XGBoost learns to predict full matrix"""

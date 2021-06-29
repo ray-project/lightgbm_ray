@@ -1,4 +1,4 @@
-# import os
+import os
 
 import pytest
 
@@ -26,12 +26,12 @@ def test_simple_train(start_client_server_4_cpus):
     main(num_actors=2, cpus_per_actor=2)
 
 
-# @pytest.mark.skipif(
-#     os.environ.get("TUNE", "0") != "1", reason="Sipping Tune tests")
-# def test_simple_tune(start_client_server_4_cpus):
-#     assert ray.util.client.ray.is_connected()
-#     from lightgbm_ray.examples.simple_tune import main
-#     main(cpus_per_actor=1, num_actors=1, num_samples=4)
+@pytest.mark.skipif(
+    os.environ.get("TUNE", "0") != "1", reason="Sipping Tune tests")
+def test_simple_tune(start_client_server_4_cpus):
+    assert ray.util.client.ray.is_connected()
+    from lightgbm_ray.examples.simple_tune import main
+    main(cpus_per_actor=2, num_actors=1, num_samples=4)
 
 
 def test_simple_dask(start_client_server_5_cpus):
