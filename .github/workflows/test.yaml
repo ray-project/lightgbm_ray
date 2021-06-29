@@ -64,7 +64,7 @@ jobs:
         bash ./run_ci_tests.sh
     - name: Run examples
       run: |
-        bash ./run_ci_examples.sh --no-tune
+        bash ./run_ci_examples.sh
 
   test_linux_ray_release:
     runs-on: ubuntu-latest
@@ -95,7 +95,7 @@ jobs:
         bash ./run_ci_tests.sh
     - name: Run examples
       run: |
-        bash ./run_ci_examples.sh --no-tune
+        bash ./run_ci_examples.sh
 
   test_linux_compat:
     # Test compatibility when some optional libraries are missing
@@ -189,4 +189,4 @@ jobs:
         bash ./run_ci_tests.sh
     - name: Run examples
       run: |
-        bash ./run_ci_examples.sh --no-tune
+        bash ./run_ci_examples.sh

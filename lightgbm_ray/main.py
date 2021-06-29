@@ -60,6 +60,7 @@ from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
 from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
+from lightgbm_ray.tune import _try_add_tune_callback, _TuneLGBMRank0Mixin
 
 logger = logging.getLogger(__name__)
 
@@ -220,12 +221,12 @@ class RayLightGBMActor(RayXGBoostActor):
             checkpoint_frequency=checkpoint_frequency,
             distributed_callbacks=distributed_callbacks)
 
-    def _save_checkpoint_callback(self, is_head):
+    def _save_checkpoint_callback(self, is_rank_0):
         this = self
 
         def _save_internal_checkpoint_callback() -> Callable:
             def _callback(env: CallbackEnv) -> None:
-                if not is_head:
+                if not is_rank_0:
                     return
                 if env.iteration % this.checkpoint_frequency == 0:
                     put_queue(
@@ -238,7 +239,7 @@ class RayLightGBMActor(RayXGBoostActor):
 
         return _save_internal_checkpoint_callback()
 
-    def _stop_callback(self, is_head):
+    def _stop_callback(self, is_rank_0):
         this = self
         # Keep track of initial stop event. Since we're training in a thread,
         # the stop event might be overwritten, which should he handled
@@ -356,8 +357,11 @@ class RayLightGBMActor(RayXGBoostActor):
             callbacks = kwargs["callbacks"] or []
         else:
             callbacks = []
-        callbacks.append(self._save_checkpoint_callback(is_head=return_bst))
-        callbacks.append(self._stop_callback(is_head=return_bst))
+        callbacks.append(self._save_checkpoint_callback(is_rank_0=return_bst))
+        callbacks.append(self._stop_callback(is_rank_0=return_bst))
+        for callback in callbacks:
+            if isinstance(callback, _TuneLGBMRank0Mixin):
+                callback.is_rank_0 = return_bst
         kwargs["callbacks"] = callbacks
 
         result_dict = {}
@@ -973,7 +977,7 @@ def train(
             "`dtrain = RayDMatrix(data=data, label=label)`.".format(
                 type(dtrain)))
 
-    added_tune_callback = False  # _try_add_tune_callback(kwargs)
+    added_tune_callback = _try_add_tune_callback(kwargs)
     # LGBM currently does not support elastic training.
     if ray_params.elastic_training:
         raise ValueError("Elastic Training cannot be used with LightGBM. "

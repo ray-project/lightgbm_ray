@@ -87,8 +87,6 @@ class LGBMRayEndToEndTest(unittest.TestCase):
 
         self.params = {
             "boosting": "gbdt",
-            "nthread": 1,
-            # "max_depth": 2,
             "objective": "multiclass",
             "num_class": 4,
             "random_state": 1,
