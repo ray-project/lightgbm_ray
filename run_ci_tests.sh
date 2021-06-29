@@ -19,12 +19,12 @@ echo "============="
 echo "Running tests"
 echo "============="
 END_STATUS=0
-if ! python -m pytest -v --durations=0 -x "test_end_to_end.py" ; then END_STATUS=1; fi
-if ! python -m pytest -v --durations=0 -x "test_fault_tolerance.py" ; then END_STATUS=1; fi
+#if ! python -m pytest -v --durations=0 -x "test_end_to_end.py" ; then END_STATUS=1; fi
+#if ! python -m pytest -v --durations=0 -x "test_fault_tolerance.py" ; then END_STATUS=1; fi
 if ! python -m pytest -v --durations=0 -x "test_lightgbm.py" ; then END_STATUS=1; fi
 
 if [ "$TUNE" = "1" ]; then
- if ! python -m pytest -v --durations=0 -x "test_tune.py" ; then END_STATUS=1; fi
+ if ! python -m pytest -s -v --durations=0 -x "test_tune.py" ; then END_STATUS=1; fi
 else
  echo "skipping tune tests"
 fi
