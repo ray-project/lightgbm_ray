@@ -21,7 +21,7 @@ from lightgbm_ray.tune import TuneReportCallback,\
     TuneReportCheckpointCallback, _try_add_tune_callback
 
 
-class XGBoostRayTuneTest(unittest.TestCase):
+class LightGBMRayTuneTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=8)
         repeat = 64  # Repeat data a couple of times for stability
