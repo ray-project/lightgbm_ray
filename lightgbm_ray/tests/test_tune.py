@@ -23,7 +23,6 @@ from lightgbm_ray.tune import TuneReportCallback,\
 
 class LightGBMRayTuneTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=8)
         repeat = 64  # Repeat data a couple of times for stability
         x = np.array([
             [1, 0, 0, 0],  # Feature 0 -> Label 0
@@ -68,8 +67,10 @@ class LightGBMRayTuneTest(unittest.TestCase):
         shutil.rmtree(self.experiment_dir)
 
     # noinspection PyTypeChecker
-    def testNumIters(self):
+    def testNumIters(self, init=True):
         """Test that the number of reported tune results is correct"""
+        if init:
+            ray.init(num_cpus=5)
         ray_params = RayParams(cpus_per_actor=2, num_actors=2)
         analysis = tune.run(
             self.train_func(ray_params),
@@ -83,6 +84,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
 
     def testNumItersClient(self):
         """Test ray client mode"""
+        ray.init(num_cpus=5)
         if ray.__version__ <= "1.2.0":
             self.skipTest("Ray client mocks do not work in Ray <= 1.2.0")
 
@@ -91,12 +93,13 @@ class LightGBMRayTuneTest(unittest.TestCase):
         self.assertFalse(ray.util.client.ray.is_connected())
         with ray_start_client_server():
             self.assertTrue(ray.util.client.ray.is_connected())
-            self.testNumIters()
+            self.testNumIters(init=False)
 
     @unittest.skipIf(OrigTuneReportCallback is None,
                      "integration.lightgbmnot yet in ray.tune")
     def testReplaceTuneCheckpoints(self):
         """Test if ray.tune.integration.lightgbm callbacks are replaced"""
+        ray.init(num_cpus=5)
         # Report callback
         in_cp = [OrigTuneReportCallback(metrics="met")]
         in_dict = {"callbacks": in_cp}
@@ -125,6 +128,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
         self.assertEqual(replaced._checkpoint._filename, "test")
 
     def testEndToEndCheckpointing(self):
+        ray.init(num_cpus=5)
         ray_params = RayParams(cpus_per_actor=2, num_actors=2)
         analysis = tune.run(
             self.train_func(
@@ -143,6 +147,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
     @unittest.skipIf(OrigTuneReportCallback is None,
                      "integration.lightgbmnot yet in ray.tune")
     def testEndToEndCheckpointingOrigTune(self):
+        ray.init(num_cpus=5)
         ray_params = RayParams(cpus_per_actor=2, num_actors=2)
         analysis = tune.run(
             self.train_func(
