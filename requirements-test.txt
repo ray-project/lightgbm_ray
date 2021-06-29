@@ -12,4 +12,4 @@ git+https://github.com/ray-project/xgboost_ray.git
 parameterized
 
 # workaround for now
-Pillow
+tensorboardX==2.2
