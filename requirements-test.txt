@@ -10,3 +10,6 @@ scikit-learn
 modin
 git+https://github.com/ray-project/xgboost_ray.git
 parameterized
+
+# workaround for now
+Pillow
