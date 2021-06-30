@@ -8,7 +8,7 @@ pyarrow
 ray[tune]
 scikit-learn
 modin
-xgboost_ray
+git+https://github.com/ray-project/xgboost_ray.git
 parameterized
 
 # workaround for now
