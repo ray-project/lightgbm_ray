@@ -27,8 +27,9 @@
 
 from typing import (Tuple, Dict, Any, List, Optional, Type, Union, Sequence,
                     Callable)
-
 from copy import deepcopy
+from dataclasses import dataclass
+
 import time
 import logging
 import os
@@ -88,6 +89,7 @@ def _check_cpus_per_actor_at_least_2(cpus_per_actor: int,
                 "to True.")
 
 
+@dataclass
 class RayParams(RayXGBParams):
     allow_less_than_two_cpus: bool = False
 
