@@ -42,7 +42,7 @@ import numpy as np
 import pandas as pd
 
 from lightgbm import LGBMModel, LGBMRanker, Booster
-from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError
+from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError, _safe_call
 from lightgbm.callback import CallbackEnv
 
 import ray
@@ -359,15 +359,13 @@ class RayLightGBMActor(RayXGBoostActor):
 
         # We run xgb.train in a thread to be able to react to the stop event.
 
-        model = self.model_factory(**local_params)
-
-        if isinstance(kwargs.get("init_model", None), Booster):
-            print(kwargs["init_model"].network)
-
         def _train():
-            print(f"starting lgbm training, rank {self.rank}, {self.network_params}, {local_params}, {kwargs}")
+            print(
+                f"starting lgbm training, rank {self.rank}, {self.network_params}, {local_params}, {kwargs}"
+            )
             try:
-                with lgbm_network_free(model, kwargs.get("init_model", None), _LIB):
+                model = self.model_factory(**local_params)
+                with lgbm_network_free(model, _LIB):
                     if is_ranker:
                         # missing group arg
                         model.fit(
@@ -405,23 +403,23 @@ class RayLightGBMActor(RayXGBoostActor):
                 error_dict.update({"exception": e})
                 return
 
-        with lgbm_network_free(model, kwargs.get("init_model", None), _LIB):
-            thread = threading.Thread(target=_train)
-            thread.daemon = True
-            thread.start()
-            while thread.is_alive():
-                thread.join(timeout=0)
-                if self._stop_event.is_set():
-                    raise RayXGBoostTrainingStopped(
-                        "Training was interrupted.")
-                time.sleep(0.1)
+        thread = threading.Thread(target=_train)
+        thread.daemon = True
+        thread.start()
+        while thread.is_alive():
+            thread.join(timeout=0)
+            if self._stop_event.is_set():
+                _safe_call(_LIB.LGBM_NetworkFree())
+                raise RayXGBoostTrainingStopped("Training was interrupted.")
+            time.sleep(0.1)
 
-            if not result_dict:
-                raise_from = error_dict.get("exception", None)
-                raise RayXGBoostTrainingError(
-                    "Training failed.") from raise_from
+        if not result_dict:
+            raise_from = error_dict.get("exception", None)
+            _safe_call(_LIB.LGBM_NetworkFree())
+            raise RayXGBoostTrainingError("Training failed.") from raise_from
 
-            thread.join()
+        thread.join()
+        _safe_call(_LIB.LGBM_NetworkFree())
         self._distributed_callbacks.after_train(self, result_dict)
 
         if not return_bst:
