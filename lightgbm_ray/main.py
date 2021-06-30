@@ -451,7 +451,7 @@ def _autodetect_resources(ray_params: RayParams,
     cpus_per_actor, gpus_per_actor = _autodetect_resources_base(
         ray_params, use_tree_method)
     if ray_params.cpus_per_actor <= 0:
-        cpus_per_actor = min(2, cpus_per_actor)
+        cpus_per_actor = max(2, cpus_per_actor)
     return cpus_per_actor, gpus_per_actor
 
 
