@@ -147,8 +147,6 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
         if os.path.exists(self.die_lock_file_2):
             os.remove(self.die_lock_file_2)
 
-        ray.init(num_cpus=4, num_gpus=0, log_to_driver=True)
-
     def tearDown(self) -> None:
         if os.path.exists(self.tmpdir):
             shutil.rmtree(self.tmpdir)
@@ -162,6 +160,7 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
 
     def testTrainingContinuationKilled(self):
         """This should continue after one actor died."""
+        ray.init(num_cpus=4, num_gpus=0, log_to_driver=True)
         additional_results = {}
         keep_actors = {}
 
@@ -198,6 +197,7 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
     def testTrainingStop(self):
         """This should now stop training after one actor died."""
         # The `train()` function raises a RuntimeError
+        ray.init(num_cpus=4, num_gpus=0, log_to_driver=True)
         with self.assertRaises(RuntimeError):
             train(
                 self.params,
@@ -209,6 +209,7 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
     def testCheckpointContinuationValidity(self):
         """Test that checkpoints are stored and loaded correctly"""
 
+        ray.init(num_cpus=4, num_gpus=0, log_to_driver=True)
         # Train once, get checkpoint via callback returns
         res_1 = {}
         train(
@@ -255,6 +256,8 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
 
     def testSameResultWithAndWithoutError(self):
         """Get the same model with and without errors during training."""
+
+        ray.init(num_cpus=4, num_gpus=0, log_to_driver=True)
         # Run training
         bst_noerror = train(
             self.params,
