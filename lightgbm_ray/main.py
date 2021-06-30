@@ -397,20 +397,23 @@ class RayLightGBMActor(RayXGBoostActor):
                 error_dict.update({"exception": e})
                 return
 
-        thread = threading.Thread(target=_train)
-        thread.daemon = True
-        thread.start()
-        while thread.is_alive():
-            thread.join(timeout=0)
-            if self._stop_event.is_set():
-                raise RayXGBoostTrainingStopped("Training was interrupted.")
-            time.sleep(0.1)
+        with lgbm_network_free(None, _LIB):
+            thread = threading.Thread(target=_train)
+            thread.daemon = True
+            thread.start()
+            while thread.is_alive():
+                thread.join(timeout=0)
+                if self._stop_event.is_set():
+                    raise RayXGBoostTrainingStopped(
+                        "Training was interrupted.")
+                time.sleep(0.1)
 
-        if not result_dict:
-            raise_from = error_dict.get("exception", None)
-            raise RayXGBoostTrainingError("Training failed.") from raise_from
+            if not result_dict:
+                raise_from = error_dict.get("exception", None)
+                raise RayXGBoostTrainingError(
+                    "Training failed.") from raise_from
 
-        thread.join()
+            thread.join()
         self._distributed_callbacks.after_train(self, result_dict)
 
         if not return_bst:
