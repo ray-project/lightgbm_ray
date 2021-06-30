@@ -51,12 +51,12 @@ from xgboost_ray.main import (
     concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback,
     STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams as
     RayXGBParams, _TrainingState, _is_client_connected, is_session_enabled,
-    force_on_current_node, _assert_ray_support, _ray_get_cluster_cpus,
-    _maybe_print_legacy_warning, _Checkpoint, _get_min_node_cpus,
-    _create_communication_processes, TUNE_USING_PG, _USE_SPREAD_STRATEGY,
-    RayTaskError, RayXGBoostActorAvailable, RayXGBoostTrainingError,
-    _create_placement_group, _shutdown, PlacementGroup, ActorHandle,
-    RayXGBoostTrainingStopped, combine_data, _trigger_data_load)
+    force_on_current_node, _assert_ray_support, _maybe_print_legacy_warning,
+    _Checkpoint, _create_communication_processes, TUNE_USING_PG,
+    _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable,
+    RayXGBoostTrainingError, _create_placement_group, _shutdown,
+    PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data,
+    _trigger_data_load, DEFAULT_PG, _autodetect_resources)
 from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
@@ -64,6 +64,7 @@ from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
 from lightgbm_ray.tune import _try_add_tune_callback, _TuneLGBMRank0Mixin
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 ELASTIC_RESTART_DISABLED = True
 
@@ -87,72 +88,6 @@ def _check_cpus_per_actor_at_least_2(cpus_per_actor: int,
                 "train efficiently. You can suppress this "
                 "exception by setting allow_less_than_two_cpus "
                 "to True.")
-
-
-@dataclass
-class RayParams(RayXGBParams):
-    allow_less_than_two_cpus: bool = False
-
-    __doc__ = RayXGBParams.__doc__.replace(
-        """        elastic_training (bool): If True, training will continue with
-            fewer actors if an actor fails. Default False.""",
-        """        allow_less_than_two_cpus (bool): If True, an exception will not
-            be raised if `cpus_per_actor`. Default False."""
-    ).replace(
-        """cpus_per_actor (int): Number of CPUs to be used per Ray actor.""",
-        """cpus_per_actor (int): Number of CPUs to be used per Ray actor.
-            If smaller than 2, training might be substantially slower
-            because communication work and training work will block
-            each other. This will raise an exception unless
-            `allow_less_than_two_cpus` is True.""")
-
-    def get_tune_resources(self):
-        _check_cpus_per_actor_at_least_2(self.cpus_per_actor,
-                                         self.allow_less_than_two_cpus)
-        return super().get_tune_resources()
-
-
-def _validate_ray_params(ray_params: Union[None, RayParams, dict]) \
-        -> RayParams:
-    if ray_params is None:
-        ray_params = RayParams()
-    elif isinstance(ray_params, dict):
-        ray_params = RayParams(**ray_params)
-    elif not isinstance(ray_params, RayParams):
-        raise ValueError(
-            f"`ray_params` must be a `RayParams` instance, a dict, or None, "
-            f"but it was {type(ray_params)}."
-            f"\nFIX THIS preferably by passing a `RayParams` instance as "
-            f"the `ray_params` parameter.")
-    if ray_params.num_actors < 2:
-        warnings.warn(
-            f"`num_actors` in `ray_params` is smaller than 2 "
-            f"({ray_params.num_actors}). LightGBM will NOT be distributed!")
-    return ray_params
-
-
-def _autodetect_resources(ray_params: RayParams,
-                          use_tree_method: bool = False) -> Tuple[int, int]:
-    gpus_per_actor = ray_params.gpus_per_actor
-    cpus_per_actor = ray_params.cpus_per_actor
-
-    # Automatically set gpus_per_actor if left at the default value
-    if gpus_per_actor == -1:
-        gpus_per_actor = 0
-        if use_tree_method:
-            gpus_per_actor = 1
-
-    # Automatically set cpus_per_actor if left at the default value
-    # Will be set to the number of cluster CPUs divided by the number of
-    # actors, bounded by the minimum number of CPUs across actors nodes.
-    if cpus_per_actor <= 0:
-        cluster_cpus = _ray_get_cluster_cpus() or 1
-        cpus_per_actor = max(
-            2,
-            min(
-                int(_get_min_node_cpus() or 2),
-                int(cluster_cpus // ray_params.num_actors)))
-    return cpus_per_actor, gpus_per_actor
 
 
 def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
@@ -196,6 +131,48 @@ def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
 
     # data.update_matrix_properties(matrix)
     # return matrix
+
+
+@dataclass
+class RayParams(RayXGBParams):
+    allow_less_than_two_cpus: bool = False
+
+    __doc__ = RayXGBParams.__doc__.replace(
+        """        elastic_training (bool): If True, training will continue with
+            fewer actors if an actor fails. Default False.""",
+        """        allow_less_than_two_cpus (bool): If True, an exception will not
+            be raised if `cpus_per_actor`. Default False."""
+    ).replace(
+        """cpus_per_actor (int): Number of CPUs to be used per Ray actor.""",
+        """cpus_per_actor (int): Number of CPUs to be used per Ray actor.
+            If smaller than 2, training might be substantially slower
+            because communication work and training work will block
+            each other. This will raise an exception unless
+            `allow_less_than_two_cpus` is True.""")
+
+    def get_tune_resources(self):
+        _check_cpus_per_actor_at_least_2(self.cpus_per_actor,
+                                         self.allow_less_than_two_cpus)
+        return super().get_tune_resources()
+
+
+def _validate_ray_params(ray_params: Union[None, RayParams, dict]) \
+        -> RayParams:
+    if ray_params is None:
+        ray_params = RayParams()
+    elif isinstance(ray_params, dict):
+        ray_params = RayParams(**ray_params)
+    elif not isinstance(ray_params, RayParams):
+        raise ValueError(
+            f"`ray_params` must be a `RayParams` instance, a dict, or None, "
+            f"but it was {type(ray_params)}."
+            f"\nFIX THIS preferably by passing a `RayParams` instance as "
+            f"the `ray_params` parameter.")
+    if ray_params.num_actors < 2:
+        warnings.warn(
+            f"`num_actors` in `ray_params` is smaller than 2 "
+            f"({ray_params.num_actors}). LightGBM will NOT be distributed!")
+    return ray_params
 
 
 class RayLightGBMActor(RayXGBoostActor):
@@ -482,6 +459,9 @@ def _create_actor(
         ip: Optional[str] = None,
         port: Optional[int] = None,
 ) -> ActorHandle:
+    # Send DEFAULT_PG here, which changed in Ray > 1.4.0
+    # If we send `None`, this will ignore the parent placement group and
+    # lead to errors e.g. when used within Ray Tune
     if ip:
         if resources_per_actor is not None:
             resources_per_actor["node"] = ip
@@ -491,7 +471,7 @@ def _create_actor(
         num_cpus=num_cpus_per_actor,
         num_gpus=num_gpus_per_actor,
         resources=resources_per_actor,
-        placement_group=placement_group).remote(
+        placement_group=placement_group or DEFAULT_PG).remote(
             rank=rank,
             num_actors=num_actors,
             model_factory=model_factory,

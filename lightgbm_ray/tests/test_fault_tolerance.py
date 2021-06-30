@@ -1,4 +1,3 @@
-import logging
 import os
 import shutil
 import tempfile
@@ -17,12 +16,6 @@ from lightgbm_ray import train, RayDMatrix, RayParams
 from xgboost_ray.session import get_actor_rank, put_queue
 
 from xgboost_ray.tests.utils import flatten_obj
-
-logging.getLogger("lightgbm_ray.main").setLevel(logging.DEBUG)
-logging.getLogger("lightgbm_ray").setLevel(logging.DEBUG)
-logging.getLogger("xgboost_ray.main").setLevel(logging.DEBUG)
-logging.getLogger("xgboost_ray.elastic").setLevel(logging.DEBUG)
-logging.getLogger("xgboost_ray").setLevel(logging.DEBUG)
 
 
 def get_num_trees(model_or_booster):

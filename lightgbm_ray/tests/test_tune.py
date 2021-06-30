@@ -39,7 +39,6 @@ class LightGBMRayTuneTest(unittest.TestCase):
                 "num_class": 4,
                 "random_state": 1,
                 "tree_learner": "data",
-                "deterministic": True,
                 "metrics": ["multi_logloss", "multi_error"]
             },
             "num_boost_round": tune.choice([1, 3])
@@ -70,8 +69,8 @@ class LightGBMRayTuneTest(unittest.TestCase):
     def testNumIters(self, init=True):
         """Test that the number of reported tune results is correct"""
         if init:
-            ray.init(num_cpus=3)
-        ray_params = RayParams(cpus_per_actor=2, num_actors=1)
+            ray.init(num_cpus=8)
+        ray_params = RayParams(cpus_per_actor=2, num_actors=2)
         analysis = tune.run(
             self.train_func(ray_params),
             config=self.params,
@@ -84,7 +83,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
 
     def testNumItersClient(self):
         """Test ray client mode"""
-        ray.init(num_cpus=3)
+        ray.init(num_cpus=8)
         if ray.__version__ <= "1.2.0":
             self.skipTest("Ray client mocks do not work in Ray <= 1.2.0")
 
@@ -99,7 +98,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
                      "integration.lightgbmnot yet in ray.tune")
     def testReplaceTuneCheckpoints(self):
         """Test if ray.tune.integration.lightgbm callbacks are replaced"""
-        ray.init(num_cpus=3)
+        ray.init(num_cpus=4)
         # Report callback
         in_cp = [OrigTuneReportCallback(metrics="met")]
         in_dict = {"callbacks": in_cp}
@@ -128,7 +127,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
         self.assertEqual(replaced._checkpoint._filename, "test")
 
     def testEndToEndCheckpointing(self):
-        ray.init(num_cpus=3)
+        ray.init(num_cpus=4)
         ray_params = RayParams(cpus_per_actor=2, num_actors=1)
         analysis = tune.run(
             self.train_func(
@@ -147,8 +146,8 @@ class LightGBMRayTuneTest(unittest.TestCase):
     @unittest.skipIf(OrigTuneReportCallback is None,
                      "integration.lightgbmnot yet in ray.tune")
     def testEndToEndCheckpointingOrigTune(self):
-        ray.init(num_cpus=3)
-        ray_params = RayParams(cpus_per_actor=2, num_actors=1)
+        ray.init(num_cpus=4)
+        ray_params = RayParams(cpus_per_actor=1, num_actors=1)
         analysis = tune.run(
             self.train_func(
                 ray_params, callbacks=[OrigTuneReportCheckpointCallback()]),

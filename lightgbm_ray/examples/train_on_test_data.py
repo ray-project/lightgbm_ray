@@ -61,7 +61,7 @@ if __name__ == "__main__":
         path = os.path.join(os.path.dirname(__file__), "parted.parquet")
 
     import ray
-    ray.init(num_cpus=5)
+    ray.init()
 
     start = time.time()
     main(path)

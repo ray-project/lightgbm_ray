@@ -66,7 +66,7 @@ def main():
 
 if __name__ == "__main__":
     import ray
-    ray.init(num_cpus=5)
+    ray.init()
 
     start = time.time()
     main()

@@ -105,7 +105,6 @@ if TUNE_LEGACY and TUNE_INSTALLED:
                 return
             eval_result = self._get_eval_result(env)
             report_dict = self._get_report_dict(eval_result)
-            print(report_dict)
             put_queue(lambda: tune.report(**report_dict))
 
     class _TuneCheckpointCallback(_TuneLGBMRank0Mixin,
