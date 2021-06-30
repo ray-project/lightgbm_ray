@@ -92,11 +92,11 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    if args.server_address:
+    if args.smoke_test:
+        ray.init(num_cpus=args.num_actors * args.cpus_per_actor)
+    elif args.server_address:
         ray.util.connect(args.server_address)
-    elif args.address:
-        ray.init(address=args.address)
     else:
-        ray.init(num_cpus=(args.num_actors * args.cpus_per_actor) + 1)
+        ray.init(address=args.address)
 
     main(args.cpus_per_actor, args.num_actors)
