@@ -15,9 +15,6 @@ class lgbm_network_free:
         return
 
     def __enter__(self) -> None:
-        _safe_call(self.lib.LGBM_NetworkFree())
-
-    def __exit__(self, type, value, traceback):
         try:
             self.init_model.free_network()
         except Exception as e:
@@ -27,6 +24,9 @@ class lgbm_network_free:
         except Exception as e:
             pass
         _safe_call(self.lib.LGBM_NetworkFree())
+
+    def __exit__(self, type, value, traceback):
+        self.__enter__()
 
 
 def find_free_port() -> int:
