@@ -35,6 +35,7 @@ import logging
 import os
 import threading
 import warnings
+import inspect
 # import traceback
 
 import numpy as np
@@ -244,6 +245,8 @@ class RayLightGBMActor(RayXGBoostActor):
         port = self.port()
         if not port:
             port = find_free_port()
+        else:
+            assert self.is_port_free(port)
         return (self.ip(), port)
 
     def port(self) -> Optional[int]:
@@ -356,10 +359,15 @@ class RayLightGBMActor(RayXGBoostActor):
 
         # We run xgb.train in a thread to be able to react to the stop event.
 
+        model = self.model_factory(**local_params)
+
+        if isinstance(kwargs.get("init_model", None), Booster):
+            print(kwargs["init_model"].network)
+
         def _train():
+            print(f"starting lgbm training, rank {self.rank}, {self.network_params}, {local_params}, {kwargs}")
             try:
-                model = self.model_factory(**local_params)
-                with lgbm_network_free(model, _LIB):
+                with lgbm_network_free(model, kwargs.get("init_model", None), _LIB):
                     if is_ranker:
                         # missing group arg
                         model.fit(
@@ -397,7 +405,7 @@ class RayLightGBMActor(RayXGBoostActor):
                 error_dict.update({"exception": e})
                 return
 
-        with lgbm_network_free(None, _LIB):
+        with lgbm_network_free(model, kwargs.get("init_model", None), _LIB):
             thread = threading.Thread(target=_train)
             thread.daemon = True
             thread.start()
@@ -670,7 +678,9 @@ def _train(params: Dict,
         ips, ports = zip(*addresses)
         ips = list(ips)
         ports = list(ports)
-        machines = ",".join([f"{ip}:{port}" for ip, port in addresses])
+        machine_addresses = [f"{ip}:{port}" for ip, port in addresses]
+        assert len(machine_addresses) == len(set(machine_addresses))
+        machines = ",".join(machine_addresses)
 
         for i, actor in enumerate(live_actors):
             actor.set_network_params.remote(machines, ports[i],

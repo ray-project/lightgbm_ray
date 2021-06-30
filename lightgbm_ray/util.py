@@ -1,14 +1,16 @@
 from contextlib import closing
 import socket
 import errno
+import traceback as tb
 
 from lightgbm.basic import _safe_call
 
 
 class lgbm_network_free:
-    def __init__(self, model, lib) -> None:
+    def __init__(self, model, init_model, lib) -> None:
         """Context to ensure free_network() is called"""
         self.model = model
+        self.init_model = init_model
         self.lib = lib
         return
 
@@ -17,8 +19,12 @@ class lgbm_network_free:
 
     def __exit__(self, type, value, traceback):
         try:
-            self.model.booster_.free_network()
-        except Exception:
+            self.init_model.free_network()
+        except Exception as e:
+            pass
+        try:
+            self.model._Booster.free_network()
+        except Exception as e:
             pass
         _safe_call(self.lib.LGBM_NetworkFree())
 

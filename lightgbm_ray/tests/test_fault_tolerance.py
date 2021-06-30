@@ -135,6 +135,7 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
             "num_class": 4,
             "random_state": 1,
             "deterministic": True,
+            "time_out": 1,
         }
 
         self.tmpdir = str(tempfile.mkdtemp())
@@ -257,8 +258,9 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
     def testSameResultWithAndWithoutError(self):
         """Get the same model with and without errors during training."""
 
-        ray.init(num_cpus=4, num_gpus=0, log_to_driver=True)
+        ray.init(num_cpus=5, num_gpus=0, log_to_driver=True)
         # Run training
+        print("test no error")
         bst_noerror = train(
             self.params,
             RayDMatrix(self.x, self.y),
@@ -266,6 +268,7 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
             ray_params=RayParams(
                 max_actor_restarts=0, num_actors=2, cpus_per_actor=2))
 
+        print("test part 1")
         bst_2part_1 = train(
             self.params,
             RayDMatrix(self.x, self.y),
@@ -273,6 +276,7 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
             ray_params=RayParams(
                 max_actor_restarts=0, num_actors=2, cpus_per_actor=2))
 
+        print("test part 2")
         bst_2part_2 = train(
             self.params,
             RayDMatrix(self.x, self.y),
@@ -281,6 +285,7 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
                 max_actor_restarts=0, num_actors=2, cpus_per_actor=2),
             init_model=bst_2part_1)
 
+        print("test error")
         res_error = {}
         bst_error = train(
             self.params,
