@@ -56,7 +56,8 @@ from xgboost_ray.main import (
     _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable,
     RayXGBoostTrainingError, _create_placement_group, _shutdown,
     PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data,
-    _trigger_data_load, DEFAULT_PG, _autodetect_resources)
+    _trigger_data_load, DEFAULT_PG, _autodetect_resources as
+    _autodetect_resources_base)
 from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
@@ -443,6 +444,15 @@ class RayLightGBMActor(RayXGBoostActor):
 @ray.remote
 class _RemoteRayLightGBMActor(RayLightGBMActor):
     pass
+
+
+def _autodetect_resources(ray_params: RayParams,
+                          use_tree_method: bool = False) -> Tuple[int, int]:
+    cpus_per_actor, gpus_per_actor = _autodetect_resources_base(
+        ray_params, use_tree_method)
+    if ray_params.cpus_per_actor <= 0:
+        cpus_per_actor = min(2, cpus_per_actor)
+    return cpus_per_actor, gpus_per_actor
 
 
 def _create_actor(
