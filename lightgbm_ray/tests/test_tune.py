@@ -117,7 +117,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
         ]
         in_dict = {"callbacks": in_cp}
 
-        with patch("xgboost_ray.tune.is_session_enabled") as mocked:
+        with patch("lightgbm_ray.tune.is_session_enabled") as mocked:
             mocked.return_value = True
             _try_add_tune_callback(in_dict)
 
