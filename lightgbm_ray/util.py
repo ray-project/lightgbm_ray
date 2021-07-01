@@ -1,7 +1,6 @@
 from contextlib import closing
 import socket
 import errno
-import traceback as tb
 
 from lightgbm.basic import _safe_call
 
@@ -19,7 +18,7 @@ class lgbm_network_free:
     def __exit__(self, type, value, traceback):
         try:
             self.model._Booster.free_network()
-        except Exception as e:
+        except Exception:
             pass
         _safe_call(self.lib.LGBM_NetworkFree())
 
