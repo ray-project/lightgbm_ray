@@ -487,9 +487,9 @@ def _create_actor(
     # lead to errors e.g. when used within Ray Tune
     if ip:
         if resources_per_actor is not None:
-            resources_per_actor["node"] = ip
+            resources_per_actor[f"node:{ip}"] = 0.01
         else:
-            resources_per_actor = {"node": ip}
+            resources_per_actor = {f"node:{ip}": 0.01}
     return _RemoteRayLightGBMActor.options(
         num_cpus=num_cpus_per_actor,
         num_gpus=num_gpus_per_actor,
