@@ -35,14 +35,15 @@ import logging
 import os
 import threading
 import warnings
-import inspect
+# import inspect
 # import traceback
 
 import numpy as np
 import pandas as pd
 
 from lightgbm import LGBMModel, LGBMRanker, Booster
-from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError, _safe_call
+from lightgbm.basic import (_choose_param_value, _ConfigAliases, LightGBMError,
+                            _safe_call)
 from lightgbm.callback import CallbackEnv
 
 import ray
@@ -360,9 +361,8 @@ class RayLightGBMActor(RayXGBoostActor):
         # We run xgb.train in a thread to be able to react to the stop event.
 
         def _train():
-            print(
-                f"starting lgbm training, rank {self.rank}, {self.network_params}, {local_params}, {kwargs}"
-            )
+            logger.debug(f"starting LightGBM training, rank {self.rank}, "
+                         f"{self.network_params}, {local_params}, {kwargs}")
             try:
                 model = self.model_factory(**local_params)
                 with lgbm_network_free(model, _LIB):
@@ -397,11 +397,15 @@ class RayLightGBMActor(RayXGBoostActor):
             except StopException:
                 # Usually this should be caught by XGBoost core.
                 # Silent fail, will be raised as RayXGBoostTrainingStopped.
+                _safe_call(_LIB.LGBM_NetworkFree())
                 return
             except LightGBMError as e:
                 # traceback.print_exc()
+                _safe_call(_LIB.LGBM_NetworkFree())
                 error_dict.update({"exception": e})
                 return
+            finally:
+                _safe_call(_LIB.LGBM_NetworkFree())
 
         thread = threading.Thread(target=_train)
         thread.daemon = True
@@ -670,20 +674,32 @@ def _train(params: Dict,
     live_actors = [
         actor for actor in _training_state.actors if actor is not None
     ]
-    addresses = ray.get(
-        [actor.find_free_address.remote() for actor in live_actors])
-    if addresses:
-        ips, ports = zip(*addresses)
-        ips = list(ips)
-        ports = list(ports)
-        machine_addresses = [f"{ip}:{port}" for ip, port in addresses]
-        assert len(machine_addresses) == len(set(machine_addresses))
-        machines = ",".join(machine_addresses)
-
-        for i, actor in enumerate(live_actors):
-            actor.set_network_params.remote(machines, ports[i],
-                                            len(live_actors),
-                                            params.get("time_out", 120))
+    machines = None
+    for i in range(5):
+        addresses = ray.get(
+            [actor.find_free_address.remote() for actor in live_actors])
+        if addresses:
+            ips, ports = zip(*addresses)
+            ips = list(ips)
+            ports = list(ports)
+            machine_addresses_new = [f"{ip}:{port}" for ip, port in addresses]
+            if len(machine_addresses_new) == len(set(machine_addresses_new)):
+                machines = ",".join(machine_addresses_new)
+                break
+            if machine_addresses:
+                raise ValueError(
+                    "Machine addresses contains non-unique entries.")
+            else:
+                logger.debug("Couldn't obtain unique addresses, trying again.")
+    if machines:
+        logger.debug(f"Obtained unique addresses in {i} attempts.")
+    else:
+        raise ValueError(
+            f"Couldn't obtain enough unique addresses for {len(live_actors)}."
+            " Try reducing the number of actors.")
+    for i, actor in enumerate(live_actors):
+        actor.set_network_params.remote(machines, ports[i], len(live_actors),
+                                        params.get("time_out", 120))
 
     training_futures = [
         actor.train.remote(
