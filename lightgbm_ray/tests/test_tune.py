@@ -147,7 +147,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
                      "integration.lightgbmnot yet in ray.tune")
     def testEndToEndCheckpointingOrigTune(self):
         ray.init(num_cpus=4)
-        ray_params = RayParams(cpus_per_actor=1, num_actors=1)
+        ray_params = RayParams(cpus_per_actor=2, num_actors=1)
         analysis = tune.run(
             self.train_func(
                 ray_params, callbacks=[OrigTuneReportCheckpointCallback()]),
