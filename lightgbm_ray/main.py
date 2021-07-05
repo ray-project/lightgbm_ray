@@ -154,8 +154,9 @@ class RayParams(RayXGBParams):
             `allow_less_than_two_cpus` is True.""")
 
     def get_tune_resources(self):
-        _check_cpus_per_actor_at_least_2(self.cpus_per_actor,
-                                         self.allow_less_than_two_cpus)
+        _check_cpus_per_actor_at_least_2(
+            self.cpus_per_actor,
+            getattr(self, "allow_less_than_two_cpus", False))
         return super().get_tune_resources()
 
 
@@ -546,8 +547,9 @@ def _train(params: Dict,
     else:
         params["n_jobs"] = cpus_per_actor
 
-    _check_cpus_per_actor_at_least_2(params["n_jobs"],
-                                     ray_params.allow_less_than_two_cpus)
+    _check_cpus_per_actor_at_least_2(
+        params["n_jobs"], getattr(ray_params, "allow_less_than_two_cpus",
+                                  False))
 
     # This is a callback that handles actor failures.
     # We identify the rank of the failed actor, add this to a set of

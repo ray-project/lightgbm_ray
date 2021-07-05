@@ -10,7 +10,7 @@ def readme_sklearn_api():
         X, y, train_size=0.25, random_state=42)
 
     clf = RayLGBMClassifier(
-        n_jobs=2,  # In XGBoost-Ray, n_jobs sets the number of actors
+        n_jobs=2,  # In LightGBM-Ray, n_jobs sets the number of actors
         random_state=seed)
 
     # scikit-learn API will automatically conver the data
