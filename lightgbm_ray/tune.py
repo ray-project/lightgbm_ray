@@ -52,6 +52,9 @@ except ImportError:
 
 
 class _TuneLGBMRank0Mixin:
+    """Mixin to allow for dynamic setting of rank so that only
+    one actor actually fires the callback"""
+
     @property
     def is_rank_0(self) -> bool:
         try:

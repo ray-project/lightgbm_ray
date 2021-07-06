@@ -78,6 +78,7 @@ class StopException(Exception):
 
 def _check_cpus_per_actor_at_least_2(cpus_per_actor: int,
                                      suppress_exception: bool):
+    """Raise an exception or a warning if cpus_per_actor < 2"""
     if cpus_per_actor < 2:
         if suppress_exception:
             warnings.warn("cpus_per_actor is set to less than 2. Distributed"
@@ -138,6 +139,8 @@ def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
 
 @dataclass
 class RayParams(RayXGBParams):
+    # The RayParams from XGBoost-Ray can also be used, in which
+    # case allow_less_than_two_cpus will just default to False
     allow_less_than_two_cpus: bool = False
 
     __doc__ = RayXGBParams.__doc__.replace(
@@ -196,7 +199,7 @@ class RayLightGBMActor(RayXGBoostActor):
         if "time_out" not in self.network_params:
             self.network_params["time_out"] = 120
         self.model_factory = model_factory
-        return super().__init__(
+        super().__init__(
             rank=rank,
             num_actors=num_actors,
             queue=queue,
@@ -204,7 +207,7 @@ class RayLightGBMActor(RayXGBoostActor):
             checkpoint_frequency=checkpoint_frequency,
             distributed_callbacks=distributed_callbacks)
 
-    def _save_checkpoint_callback(self, is_rank_0):
+    def _save_checkpoint_callback(self, is_rank_0: bool) -> Callable:
         this = self
 
         def _save_internal_checkpoint_callback() -> Callable:
@@ -222,7 +225,7 @@ class RayLightGBMActor(RayXGBoostActor):
 
         return _save_internal_checkpoint_callback()
 
-    def _stop_callback(self, is_rank_0):
+    def _stop_callback(self, is_rank_0: bool) -> Callable:
         this = self
         # Keep track of initial stop event. Since we're training in a thread,
         # the stop event might be overwritten, which should he handled
@@ -243,7 +246,7 @@ class RayLightGBMActor(RayXGBoostActor):
 
         return _stop_callback()
 
-    def find_free_address(self):
+    def find_free_address(self) -> Tuple[str, int]:
         port = self.port()
         if not port:
             port = find_free_port()
@@ -264,6 +267,7 @@ class RayLightGBMActor(RayXGBoostActor):
             num_machines: int,
             time_out: Optional[int] = None,
     ):
+        """Set LightGBM params responsible for networking"""
         self.network_params["machines"] = machines
         self.network_params["local_listen_port"] = local_listen_port
         self.network_params["num_machines"] = num_machines
@@ -271,6 +275,9 @@ class RayLightGBMActor(RayXGBoostActor):
             self.network_params["time_out"] = time_out
 
     def load_data(self, data: RayDMatrix):
+        # LightGBM specific - Main difference between this and XGBoost:
+        # XGBoost needs a local DMatrix, while this runs off Pandas
+        # objects returned by the RayDMatrix directly.
         if data in self._data:
             return
 
@@ -294,6 +301,9 @@ class RayLightGBMActor(RayXGBoostActor):
         if self.model_factory is None:
             raise ValueError("model_factory cannot be None for training")
 
+        # LightGBM specific - import the CDLL pointer
+        # so that _LIB.LGBM_NetworkFree() can be called
+        # in lgbm_network_free context later
         from lightgbm.basic import _LIB
 
         self._distributed_callbacks.before_train(self)
@@ -306,8 +316,6 @@ class RayLightGBMActor(RayXGBoostActor):
             default_value=num_threads if num_threads > 0 else
             sum(num
                 for _, num in ray.worker.get_resource_ids().get("CPU", [])))
-
-        # (yard1) todo add warning if num_threads < 2 (hangs)
 
         if "init_model" in kwargs:
             if isinstance(kwargs["init_model"], bytes):
@@ -359,16 +367,21 @@ class RayLightGBMActor(RayXGBoostActor):
 
         is_ranker = issubclass(self.model_factory, LGBMRanker)
 
-        # We run xgb.train in a thread to be able to react to the stop event.
+        # We run fit in a thread to be able to react to the stop event.
 
         def _train():
             logger.debug(f"starting LightGBM training, rank {self.rank}, "
                          f"{self.network_params}, {local_params}, {kwargs}")
             try:
                 model = self.model_factory(**local_params)
+                # LightGBM specific - this context calls
+                # _LIB.LGBM_NetworkFree(), which is
+                # supposed to clean up the network and
+                # free up ports should the training fail
+                # this is also called separately for good measure
                 with lgbm_network_free(model, _LIB):
                     if is_ranker:
-                        # missing group arg
+                        # missing group arg, update later
                         model.fit(
                             local_dtrain["data"],
                             local_dtrain["label"],
@@ -398,14 +411,17 @@ class RayLightGBMActor(RayXGBoostActor):
             except StopException:
                 # Usually this should be caught by XGBoost core.
                 # Silent fail, will be raised as RayXGBoostTrainingStopped.
+
+                # LightGBM specific - clean up network and open ports
                 _safe_call(_LIB.LGBM_NetworkFree())
                 return
             except LightGBMError as e:
-                # traceback.print_exc()
+                # LightGBM specific - clean up network and open ports
                 _safe_call(_LIB.LGBM_NetworkFree())
                 error_dict.update({"exception": e})
                 return
             finally:
+                # LightGBM specific - clean up network and open ports
                 _safe_call(_LIB.LGBM_NetworkFree())
 
         thread = threading.Thread(target=_train)
@@ -414,16 +430,19 @@ class RayLightGBMActor(RayXGBoostActor):
         while thread.is_alive():
             thread.join(timeout=0)
             if self._stop_event.is_set():
+                # LightGBM specific - clean up network and open ports
                 _safe_call(_LIB.LGBM_NetworkFree())
                 raise RayXGBoostTrainingStopped("Training was interrupted.")
             time.sleep(0.1)
 
         if not result_dict:
             raise_from = error_dict.get("exception", None)
+            # LightGBM specific - clean up network and open ports
             _safe_call(_LIB.LGBM_NetworkFree())
             raise RayXGBoostTrainingError("Training failed.") from raise_from
 
         thread.join()
+        # LightGBM specific - clean up network and open ports
         _safe_call(_LIB.LGBM_NetworkFree())
         self._distributed_callbacks.after_train(self, result_dict)
 
@@ -483,14 +502,16 @@ def _create_actor(
         ip: Optional[str] = None,
         port: Optional[int] = None,
 ) -> ActorHandle:
-    # Send DEFAULT_PG here, which changed in Ray > 1.4.0
-    # If we send `None`, this will ignore the parent placement group and
-    # lead to errors e.g. when used within Ray Tune
+    # If we have an IP passed, force the actor to be spawned on a node
+    # with that IP
     if ip:
         if resources_per_actor is not None:
             resources_per_actor[f"node:{ip}"] = 0.01
         else:
             resources_per_actor = {f"node:{ip}": 0.01}
+    # Send DEFAULT_PG here, which changed in Ray > 1.4.0
+    # If we send `None`, this will ignore the parent placement group and
+    # lead to errors e.g. when used within Ray Tune
     return _RemoteRayLightGBMActor.options(
         num_cpus=num_cpus_per_actor,
         num_gpus=num_gpus_per_actor,
@@ -644,7 +665,7 @@ def _train(params: Dict,
 
     logger.info("[RayLightGBM] Starting LightGBM training.")
 
-    # Start Rabit tracker for gradient sharing
+    # # Start Rabit tracker for gradient sharing
     # rabit_process, env = _start_rabit_tracker(alive_actors)
     # rabit_args = [("%s=%s" % item).encode() for item in env.items()]
 
@@ -676,13 +697,20 @@ def _train(params: Dict,
     live_actors = [
         actor for actor in _training_state.actors if actor is not None
     ]
+
+    # LightGBM specific: handle actor addresses
+    # if neither local_listening_port nor machines are set
+    # get the ips and a random port from the actors, and then
+    # assign them back so the lgbm params are updated.
+    # do this in a loop to ensure that if there is a port
+    # confilict, it can try and choose a new one. Most of the times
+    # it will complete in one iteration
     machines = None
     for i in range(5):
         addresses = ray.get(
             [actor.find_free_address.remote() for actor in live_actors])
         if addresses:
-            ips, ports = zip(*addresses)
-            ips = list(ips)
+            _, ports = zip(*addresses)
             ports = list(ports)
             machine_addresses_new = [f"{ip}:{port}" for ip, port in addresses]
             if len(machine_addresses_new) == len(set(machine_addresses_new)):
@@ -771,14 +799,14 @@ def _train(params: Dict,
 
         raise RayActorError from exc
 
-    # # Training is now complete.
+    # Training is now complete.
     # # Stop Rabit tracking process
     # _stop_rabit_tracker(rabit_process)
 
     # Get all results from all actors.
     all_results: List[Dict[str, Any]] = ray.get(training_futures)
 
-    # All results should be the same because of Rabit tracking. But only
+    # All results should be the same. But only
     # the first one actually returns its bst object.
     bst: LGBMModel = all_results[0]["bst"]
     evals_result = all_results[0]["evals_result"]
@@ -953,14 +981,17 @@ def train(
         raise ValueError(
             "Specifying both `evals` and `valid_sets` is ambiguous.")
 
-    # capture whether local_listen_port or its aliases were provided
+    # LightGBM specific - capture whether local_listen_port or its aliases
+    # were provided
     listen_port_in_params = any(
         alias in params for alias in _ConfigAliases.get("local_listen_port"))
 
-    # capture whether machines or its aliases were provided
+    # LightGBM specific - capture whether machines or its aliases
+    # were provided
     machines_in_params = any(
         alias in params for alias in _ConfigAliases.get("machines"))
 
+    # LightGBM specific - validate machines and local_listening_port
     machine_addresses = None
     listen_port = None
     if machines_in_params:
@@ -999,7 +1030,7 @@ def train(
                 type(dtrain)))
 
     added_tune_callback = _try_add_tune_callback(kwargs)
-    # LGBM currently does not support elastic training.
+    # LightGBM currently does not support elastic training.
     if ray_params.elastic_training:
         raise ValueError("Elastic Training cannot be used with LightGBM. "
                          "Please disable elastic_training in `ray_params` "
@@ -1385,7 +1416,7 @@ def predict(model: Union[LGBMModel, Booster],
 
     if not isinstance(data, RayDMatrix):
         raise ValueError(
-            "The `data` argument passed to `train()` is not a RayDMatrix, "
+            "The `data` argument passed to `predict()` is not a RayDMatrix, "
             "but of type {}. "
             "\nFIX THIS by instantiating a RayDMatrix first: "
             "`data = RayDMatrix(data=data)`.".format(type(data)))
