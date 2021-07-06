@@ -1,4 +1,6 @@
-# Portions of the code used in this file come from lightgbm.dask
+# Portions of code used in this file and implementation logic are based
+# on lightgbm.dask.
+# https://github.com/microsoft/LightGBM/blob/b5502d19b2b462f665e3d1edbaa70c0d6472bca4/python-package/lightgbm/dask.py
 
 # The MIT License (MIT)
 
@@ -35,8 +37,6 @@ import logging
 import os
 import threading
 import warnings
-# import inspect
-# import traceback
 
 import numpy as np
 import pandas as pd
