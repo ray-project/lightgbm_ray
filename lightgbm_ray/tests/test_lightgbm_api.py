@@ -133,6 +133,7 @@ class LightGBMAPITest(unittest.TestCase):
 
     def testCallbacks(self):
         self._init_ray()
+
         class _Callback(_TuneLGBMRank0Mixin):
             def __call__(self, env: CallbackEnv) -> None:
                 print(f"My rank: {self.is_rank_0}")
