@@ -61,12 +61,10 @@ class LightGBMAPITest(unittest.TestCase):
         self.kwargs = {}
 
     def tearDown(self) -> None:
-        if ray.is_initialized():
-            ray.shutdown()
+        ray.shutdown()
 
     def _init_ray(self):
-        if not ray.is_initialized():
-            ray.init(num_cpus=4)
+        ray.init(num_cpus=4, num_gpus=0)
 
     def testCustomObjectiveFunction(self):
         """Ensure that custom objective functions work.
@@ -134,6 +132,7 @@ class LightGBMAPITest(unittest.TestCase):
                 atol=0.1))
 
     def testCallbacks(self):
+        self._init_ray()
         class _Callback(_TuneLGBMRank0Mixin):
             def __call__(self, env: CallbackEnv) -> None:
                 print(f"My rank: {self.is_rank_0}")
