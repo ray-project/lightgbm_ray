@@ -78,7 +78,8 @@ def train_ray(path,
     taken = time.time() - start
     print(f"TRAIN TIME TAKEN: {taken:.2f} seconds")
 
-    bst.booster_.save_model("benchmark_{}.lgbm".format("cpu" if not use_gpu else "gpu"))
+    bst.booster_.save_model(
+        "benchmark_{}.lgbm".format("cpu" if not use_gpu else "gpu"))
     print("Final training error: {:.4f}".format(
         evals_result["train"]["binary_error" if not regression else "l2"][-1]))
     return bst, taken
