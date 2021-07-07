@@ -1,0 +1,45 @@
+cluster_name: lightgbm_ray_release_tests_gpu_{{env["NUM_WORKERS"] | default(0)}}
+
+max_workers: {{env["NUM_WORKERS"] | default(0)}}
+upscaling_speed: 9999
+
+idle_timeout_minutes: 15
+
+docker:
+    image: anyscale/ray:nightly-gpu
+    container_name: ray_container
+    pull_before_run: true
+    run_options:
+      - --privileged
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: false
+
+available_node_types:
+    gpu_4_ondemand:
+        node_config:
+            InstanceType: p2.xlarge
+        resources: {"CPU": 4, "GPU": 1}
+        min_workers: {{env["NUM_WORKERS"] | default(0)}}
+        max_workers: {{env["NUM_WORKERS"] | default(0)}}
+
+auth:
+    ssh_user: ubuntu
+
+head_node_type: gpu_4_ondemand
+worker_default_node_type: gpu_4_ondemand
+
+file_mounts: {
+    "~/lightgbm_tests": "."
+}
+
+file_mounts_sync_continuously: false
+
+setup_commands:
+    - pip uninstall -y lightgbm && pip install -U "lightgbm>=3.2.1" --install-option=--gpu
+    - pip install -U pyarrow cupy-cuda101
+    - pip install -U {{env["RAY_WHEEL"] | default("ray")}}
+    - export LIGHTGBM_RAY_PACKAGE="{{env["LIGHTGBM_RAY_PACKAGE"] | default("lightgbm_ray")}}" && /bin/bash ~/lightgbm_tests/setup_lightgbm.sh
