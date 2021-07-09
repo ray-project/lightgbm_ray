@@ -490,8 +490,8 @@ number of worker failures when a node goes down, but comes at a cost of increase
 To disable this strategy, set the `USE_SPREAD_STRATEGY` environment variable to 0. If disabled, no
 particular placement strategy will be used.
 
-Note that this strategy is used only when `elastic_training` is not used. If `elastic_training` is set to `True`,
-no placement strategy is used.
+<!-- Note that this strategy is used only when `elastic_training` is not used. If `elastic_training` is set to `True`,
+no placement strategy is used. -->
 
 When LightGBM-Ray is used with Ray Tune for hyperparameter tuning, a PACK strategy is used. This strategy
 attempts to place all workers for each trial on the same node on a best-effort basis. This means that if a node
