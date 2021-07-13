@@ -255,11 +255,15 @@ class RayLightGBMActor(RayXGBoostActor):
 
     def find_free_address(self) -> Tuple[str, int]:
         port = self.port()
-        if not port or not self.fixed_port:
+        ip = self.ip()
+        if not port:
             port = find_free_port()
-        else:
-            assert self.is_port_free(port)
-        return (self.ip(), port)
+        elif not self.is_port_free(port):
+            if not self.fixed_port:
+                port = find_free_port()
+            else:
+                raise RuntimeError(f"Port {port} on {ip} is not free!")
+        return (ip, port)
 
     def port(self) -> Optional[int]:
         return self.network_params.get("local_listen_port", None)
