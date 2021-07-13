@@ -1,8 +1,9 @@
 from contextlib import closing
 import socket
 import errno
+import gc
 
-from lightgbm.basic import _safe_call
+from lightgbm.basic import _safe_call, _LIB
 
 
 class lgbm_network_free:
@@ -10,9 +11,8 @@ class lgbm_network_free:
     (makes sure network is cleaned and ports are
     opened even if training fails)."""
 
-    def __init__(self, model, lib) -> None:
+    def __init__(self, model) -> None:
         self.model = model
-        self.lib = lib
         return
 
     def __enter__(self) -> None:
@@ -23,7 +23,9 @@ class lgbm_network_free:
             self.model._Booster.free_network()
         except Exception:
             pass
-        _safe_call(self.lib.LGBM_NetworkFree())
+        _safe_call(_LIB.LGBM_NetworkFree())
+        # doesn't clean up properly without gc collect
+        gc.collect()
 
 
 def find_free_port() -> int:

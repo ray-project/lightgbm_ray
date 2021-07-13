@@ -35,15 +35,14 @@ from dataclasses import dataclass
 import time
 import logging
 import os
-import threading
 import warnings
+import gc
 
 import numpy as np
 import pandas as pd
 
 from lightgbm import LGBMModel, LGBMRanker, Booster
-from lightgbm.basic import (_choose_param_value, _ConfigAliases, LightGBMError,
-                            _safe_call)
+from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError
 from lightgbm.callback import CallbackEnv
 
 import ray
@@ -57,9 +56,8 @@ from xgboost_ray.main import (
     _Checkpoint, _create_communication_processes, TUNE_USING_PG,
     _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable,
     RayXGBoostTrainingError, _create_placement_group, _shutdown,
-    PlacementGroup, ActorHandle, RayXGBoostTrainingStopped, combine_data,
-    _trigger_data_load, DEFAULT_PG, _autodetect_resources as
-    _autodetect_resources_base)
+    PlacementGroup, ActorHandle, combine_data, _trigger_data_load, DEFAULT_PG,
+    _autodetect_resources as _autodetect_resources_base)
 from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
@@ -196,6 +194,7 @@ class RayLightGBMActor(RayXGBoostActor):
     ):
         self.network_params = {} if not network_params else \
             network_params.copy()
+        self.fixed_port = "local_listen_port" in self.network_params
         if "time_out" not in self.network_params:
             self.network_params["time_out"] = 120
         self.model_factory = model_factory
@@ -214,13 +213,19 @@ class RayLightGBMActor(RayXGBoostActor):
             def _callback(env: CallbackEnv) -> None:
                 if not is_rank_0:
                     return
-                if env.iteration % this.checkpoint_frequency == 0:
+                if (env.iteration == env.end_iteration - 1
+                        or env.iteration % this.checkpoint_frequency == 0):
+                    if env.iteration == env.end_iteration - 1:
+                        iter = -1
+                    else:
+                        iter = env.iteration
                     put_queue(
-                        _Checkpoint(env.iteration, pickle.dumps(env.model)))
-                if env.iteration == env.end_iteration - 1:
-                    put_queue(_Checkpoint(-1, pickle.dumps(env.model)))
+                        _Checkpoint(
+                            iter,
+                            pickle.dumps(
+                                env.model.model_to_string(num_iteration=-1))))
 
-            _callback.order = 25  # type: ignore
+            _callback.order = 1  # type: ignore
             return _callback
 
         return _save_internal_checkpoint_callback()
@@ -241,14 +246,15 @@ class RayLightGBMActor(RayXGBoostActor):
                 except RayActorError:
                     raise StopException()
 
-            _callback.order = 26  # type: ignore
+            _callback.order = 2  # type: ignore
+            _callback.before_iteration = True  # type: ignore
             return _callback
 
         return _stop_callback()
 
     def find_free_address(self) -> Tuple[str, int]:
         port = self.port()
-        if not port:
+        if not port or not self.fixed_port:
             port = find_free_port()
         else:
             assert self.is_port_free(port)
@@ -300,11 +306,6 @@ class RayLightGBMActor(RayXGBoostActor):
               boost_rounds_left: int, *args, **kwargs) -> Dict[str, Any]:
         if self.model_factory is None:
             raise ValueError("model_factory cannot be None for training")
-
-        # LightGBM specific - import the CDLL pointer
-        # so that _LIB.LGBM_NetworkFree() can be called
-        # in lgbm_network_free context later
-        from lightgbm.basic import _LIB
 
         self._distributed_callbacks.before_train(self)
 
@@ -367,19 +368,18 @@ class RayLightGBMActor(RayXGBoostActor):
 
         is_ranker = issubclass(self.model_factory, LGBMRanker)
 
-        # We run fit in a thread to be able to react to the stop event.
-
         def _train():
             logger.debug(f"starting LightGBM training, rank {self.rank}, "
                          f"{self.network_params}, {local_params}, {kwargs}")
             try:
                 model = self.model_factory(**local_params)
+
                 # LightGBM specific - this context calls
                 # _LIB.LGBM_NetworkFree(), which is
                 # supposed to clean up the network and
                 # free up ports should the training fail
                 # this is also called separately for good measure
-                with lgbm_network_free(model, _LIB):
+                with lgbm_network_free(model):
                     if is_ranker:
                         # missing group arg, update later
                         model.fit(
@@ -403,47 +403,26 @@ class RayLightGBMActor(RayXGBoostActor):
                             eval_sample_weight=local_eval_sample_weights,
                             eval_init_score=local_eval_init_scores,
                             **kwargs)
-                result_dict.update({
-                    "bst": model,
-                    "evals_result": model.evals_result_,
-                    "train_n": self._local_n[dtrain]
-                })
+                    result_dict.update({
+                        "bst": model,
+                        "evals_result": model.evals_result_,
+                        "train_n": self._local_n[dtrain]
+                    })
             except StopException:
                 # Usually this should be caught by XGBoost core.
                 # Silent fail, will be raised as RayXGBoostTrainingStopped.
 
-                # LightGBM specific - clean up network and open ports
-                _safe_call(_LIB.LGBM_NetworkFree())
                 return
             except LightGBMError as e:
-                # LightGBM specific - clean up network and open ports
-                _safe_call(_LIB.LGBM_NetworkFree())
                 error_dict.update({"exception": e})
                 return
-            finally:
-                # LightGBM specific - clean up network and open ports
-                _safe_call(_LIB.LGBM_NetworkFree())
 
-        thread = threading.Thread(target=_train)
-        thread.daemon = True
-        thread.start()
-        while thread.is_alive():
-            thread.join(timeout=0)
-            if self._stop_event.is_set():
-                # LightGBM specific - clean up network and open ports
-                _safe_call(_LIB.LGBM_NetworkFree())
-                raise RayXGBoostTrainingStopped("Training was interrupted.")
-            time.sleep(0.1)
+        _train()
 
         if not result_dict:
             raise_from = error_dict.get("exception", None)
-            # LightGBM specific - clean up network and open ports
-            _safe_call(_LIB.LGBM_NetworkFree())
             raise RayXGBoostTrainingError("Training failed.") from raise_from
 
-        thread.join()
-        # LightGBM specific - clean up network and open ports
-        _safe_call(_LIB.LGBM_NetworkFree())
         self._distributed_callbacks.after_train(self, result_dict)
 
         if not return_bst:
@@ -672,7 +651,9 @@ def _train(params: Dict,
     # Load checkpoint if we have one. In that case we need to adjust the
     # number of training rounds.
     if _training_state.checkpoint.value:
-        kwargs["init_model"] = pickle.loads(_training_state.checkpoint.value)
+        booster = Booster(
+            model_str=pickle.loads(_training_state.checkpoint.value))
+        kwargs["init_model"] = booster
         if _training_state.checkpoint.iteration == -1:
             # -1 means training already finished.
             logger.error(
@@ -1170,15 +1151,10 @@ def train(
 
     total_training_time = 0.
     boost_rounds_left = num_boost_round
-    last_checkpoint_value = checkpoint.value
     while tries <= max_actor_restarts:
-        # Only update number of iterations if the checkpoint changed
-        # If it didn't change, we already subtracted the iterations.
-        if checkpoint.iteration >= 0 and \
-                checkpoint.value != last_checkpoint_value:
-            boost_rounds_left -= checkpoint.iteration + 1
-
-        last_checkpoint_value = checkpoint.value
+        if checkpoint.iteration >= 0:
+            # LightGBM specific - different boost_rounds_left calculation
+            boost_rounds_left = num_boost_round - checkpoint.iteration
 
         logger.debug(f"Boost rounds left: {boost_rounds_left}")
 
@@ -1216,6 +1192,7 @@ def train(
             if training_state.training_started_at > 0.:
                 total_training_time += time.time(
                 ) - training_state.training_started_at
+
             alive_actors = sum(1 for a in actors if a is not None)
             start_again = False
             if ray_params.elastic_training:
@@ -1271,6 +1248,7 @@ def train(
                 time.sleep(5)
                 queue.shutdown()
                 stop_event.shutdown()
+                gc.collect()
                 time.sleep(5)
                 queue, stop_event = _create_communication_processes()
             else:
