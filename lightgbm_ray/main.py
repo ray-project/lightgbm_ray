@@ -218,7 +218,8 @@ class RayLightGBMActor(RayXGBoostActor):
                     if env.iteration == env.end_iteration - 1:
                         iter = -1
                     else:
-                        iter = env.iteration
+                        # LightGBM starts iterations from 0
+                        iter = env.iteration + 1
                     put_queue(
                         _Checkpoint(
                             iter,
