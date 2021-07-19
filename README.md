@@ -38,7 +38,7 @@ Usage
 -----
 LightGBM-Ray provides a drop-in replacement for LightGBM's `train`
 function. To pass data, a `RayDMatrix` object is required, common
-with LightGBM-Ray.
+with XGBoost-Ray.
 
 Distributed training parameters are configured with a
 `lightgbm_ray.RayParams` object. For instance, you can set
