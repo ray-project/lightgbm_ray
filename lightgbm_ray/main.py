@@ -843,14 +843,14 @@ def train(
 
     This method handles setting up the following network parameters:
     - ``local_listen_port``: port that each LightGBM worker opens a
-        listening socket on, to accept connections from other workers.
-        This can differ from LightGBM worker to LightGBM worker, but
-        does not have to.
+    listening socket on, to accept connections from other workers.
+    This can differ from LightGBM worker to LightGBM worker, but
+    does not have to.
     - ``machines``: a comma-delimited list of all workers in the cluster,
-        in the form ``ip:port,ip:port``. If running multiple workers
-        on the same Ray Node, use different ports for each worker. For
-        example, for ``ray_params.num_actors=3``, you might pass
-        ``"127.0.0.1:12400,127.0.0.1:12401,127.0.0.1:12402"``.
+    in the form ``ip:port,ip:port``. If running multiple workers
+    on the same Ray Node, use different ports for each worker. For
+    example, for ``ray_params.num_actors=3``, you might pass
+    ``"127.0.0.1:12400,127.0.0.1:12401,127.0.0.1:12402"``.
 
     The default behavior of this function is to generate ``machines`` based
     on Ray workers, and to search for an open port on each worker to be
