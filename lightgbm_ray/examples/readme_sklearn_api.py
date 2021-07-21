@@ -13,7 +13,7 @@ def readme_sklearn_api():
         n_jobs=2,  # In LightGBM-Ray, n_jobs sets the number of actors
         random_state=seed)
 
-    # scikit-learn API will automatically conver the data
+    # scikit-learn API will automatically convert the data
     # to RayDMatrix format as needed.
     # You can also pass X as a RayDMatrix, in which case
     # y will be ignored.
