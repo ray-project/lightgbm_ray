@@ -25,8 +25,8 @@ def main(cpus_per_actor, num_actors):
     data = pd.DataFrame(x)
     data["label"] = y
 
-    # Split into 4 partitions
-    partitions = [ray.put(part) for part in np.split(data, 4)]
+    # Split into num_actors partitions
+    partitions = [ray.put(part) for part in np.split(data, args.num_actors)]
 
     # Generate Ray dataset
     ray_ds = ray.experimental.data.from_pandas(partitions)
