@@ -6,19 +6,10 @@ import pandas as pd
 import ray
 
 from lightgbm_ray import RayDMatrix, train, RayParams
-from xgboost_ray.data_sources.modin import MODIN_INSTALLED
 from sklearn.utils import shuffle
 
 
 def main(cpus_per_actor, num_actors):
-    if not MODIN_INSTALLED:
-        print("Modin is not installed or installed in a version that is not "
-              "compatible with lightgbm_ray (< 0.9.0).")
-        return
-
-    # Import modin after initializing Ray
-    from modin.distributed.dataframe.pandas import from_partitions
-
     # Generate dataset
     x = np.repeat(range(8), 16).reshape((32, 4))
     # Even numbers --> 0, odd numbers --> 1
@@ -37,13 +28,13 @@ def main(cpus_per_actor, num_actors):
     # Split into 4 partitions
     partitions = [ray.put(part) for part in np.split(data, 4)]
 
-    # Create modin df here
-    modin_df = from_partitions(partitions, axis=0)
+    # Generate Ray dataset
+    ray_ds = ray.experimental.data.from_pandas(partitions)
 
-    train_set = RayDMatrix(modin_df, "label")
+    train_set = RayDMatrix(ray_ds, "label")
 
     evals_result = {}
-    # Set LGBM config.
+    # Set LightGBM config.
     lightgbm_params = {
         "objective": "binary",
         "metric": ["binary_logloss", "binary_error"],
@@ -64,7 +55,7 @@ def main(cpus_per_actor, num_actors):
         verbose_eval=False,
         num_boost_round=10)
 
-    model_path = "modin.lgbm"
+    model_path = "ray_datasets.lgbm"
     bst.booster_.save_model(model_path)
     print("Final training error: {:.4f}".format(
         evals_result["train"]["binary_error"][-1]))
@@ -98,7 +89,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        ray.init(num_cpus=(args.num_actors * args.cpus_per_actor) + 1)
+        ray.init(num_cpus=args.num_actors + 1)
     elif args.server_address:
         ray.util.connect(args.server_address)
     else:
