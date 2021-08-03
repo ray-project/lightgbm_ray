@@ -205,7 +205,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
     def testTrainPredict(self, init=True, remote=None, **ray_param_dict):
         """Train with evaluation and predict"""
         if init:
-            ray.init(num_cpus=6, num_gpus=0)
+            ray.init(num_cpus=8, num_gpus=0)
 
         dtrain = RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH)
 
@@ -261,7 +261,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         from ray.util.client.ray_client_helpers import ray_start_client_server
 
         # (yard1) this hangs when num_cpus=2
-        ray.init(num_cpus=5, num_gpus=0)
+        ray.init(num_cpus=8, num_gpus=0)
         self.assertFalse(ray.util.client.ray.is_connected())
         with ray_start_client_server():
             self.assertTrue(ray.util.client.ray.is_connected())
