@@ -205,7 +205,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
     def testTrainPredict(self, init=True, remote=None, **ray_param_dict):
         """Train with evaluation and predict"""
         if init:
-            ray.init(num_cpus=4, num_gpus=0)
+            ray.init(num_cpus=6, num_gpus=0)
 
         dtrain = RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH)
 
