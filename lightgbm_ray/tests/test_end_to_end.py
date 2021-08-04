@@ -305,7 +305,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             self.skipTest("Ray client mocks do not work in Ray <= 1.2.0")
         from ray.util.client.ray_client_helpers import ray_start_client_server
 
-        ray.init(num_cpus=5, num_gpus=0)
+        ray.init(num_cpus=8, num_gpus=0)
         self.assertFalse(ray.util.client.ray.is_connected())
         with ray_start_client_server():
             self.assertTrue(ray.util.client.ray.is_connected())
