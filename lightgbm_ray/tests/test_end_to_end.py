@@ -217,7 +217,10 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             dtrain,
             num_boost_round=38,
             ray_params=RayParams(
-                num_actors=2, cpus_per_actor=2, **ray_param_dict),
+                num_actors=2,
+                cpus_per_actor=1,
+                allow_less_than_two_cpus=True,
+                **ray_param_dict),
             evals=[(dtrain, "dtrain")],
             evals_result=evals_result,
             _remote=remote)
