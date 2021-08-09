@@ -198,7 +198,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
                 self.params,
                 data,
                 num_boost_round=50,
-                ray_params=RayParams(num_actors=2, cpus_per_actor=1),
+                ray_params=RayParams(num_actors=2),
                 evals=[(data, "eval")],
                 valid_sets=[data])
 
@@ -233,7 +233,10 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             dtrain,
             num_boost_round=38,
             ray_params=RayParams(
-                num_actors=2, cpus_per_actor=2, **ray_param_dict),
+                num_actors=2,
+                cpus_per_actor=1,
+                allow_less_than_two_cpus=True,
+                **ray_param_dict),
             valid_sets=[dtrain],
             valid_names=["dtrain"],
             evals_result=evals_result,
@@ -245,7 +248,11 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         pred_y = predict(
             bst,
             x_mat,
-            ray_params=RayParams(num_actors=2, **ray_param_dict),
+            ray_params=RayParams(
+                num_actors=2,
+                cpus_per_actor=1,
+                allow_less_than_two_cpus=True,
+                **ray_param_dict),
             _remote=remote)
 
         self.assertEqual(pred_y.shape[1], len(np.unique(self.y)))
