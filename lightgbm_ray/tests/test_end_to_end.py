@@ -198,14 +198,14 @@ class LGBMRayEndToEndTest(unittest.TestCase):
                 self.params,
                 data,
                 num_boost_round=50,
-                ray_params=RayParams(num_actors=2, cpus_per_actor=1),
+                ray_params=RayParams(num_actors=2),
                 evals=[(data, "eval")],
                 valid_sets=[data])
 
     def testTrainPredict(self, init=True, remote=None, **ray_param_dict):
         """Train with evaluation and predict"""
         if init:
-            ray.init(num_cpus=4, num_gpus=0)
+            ray.init(num_cpus=2, num_gpus=0)
 
         dtrain = RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH)
 
@@ -217,7 +217,10 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             dtrain,
             num_boost_round=38,
             ray_params=RayParams(
-                num_actors=2, cpus_per_actor=2, **ray_param_dict),
+                num_actors=2,
+                cpus_per_actor=1,
+                allow_less_than_two_cpus=True,
+                **ray_param_dict),
             evals=[(dtrain, "dtrain")],
             evals_result=evals_result,
             _remote=remote)
@@ -230,7 +233,10 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             dtrain,
             num_boost_round=38,
             ray_params=RayParams(
-                num_actors=2, cpus_per_actor=2, **ray_param_dict),
+                num_actors=2,
+                cpus_per_actor=1,
+                allow_less_than_two_cpus=True,
+                **ray_param_dict),
             valid_sets=[dtrain],
             valid_names=["dtrain"],
             evals_result=evals_result,
@@ -242,7 +248,11 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         pred_y = predict(
             bst,
             x_mat,
-            ray_params=RayParams(num_actors=2, **ray_param_dict),
+            ray_params=RayParams(
+                num_actors=2,
+                cpus_per_actor=1,
+                allow_less_than_two_cpus=True,
+                **ray_param_dict),
             _remote=remote)
 
         self.assertEqual(pred_y.shape[1], len(np.unique(self.y)))
@@ -260,8 +270,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             self.skipTest("Ray client mocks do not work in Ray <= 1.2.0")
         from ray.util.client.ray_client_helpers import ray_start_client_server
 
-        # (yard1) this hangs when num_cpus=2
-        ray.init(num_cpus=5, num_gpus=0)
+        ray.init(num_cpus=2, num_gpus=0)
         self.assertFalse(ray.util.client.ray.is_connected())
         with ray_start_client_server():
             self.assertTrue(ray.util.client.ray.is_connected())
@@ -305,7 +314,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             self.skipTest("Ray client mocks do not work in Ray <= 1.2.0")
         from ray.util.client.ray_client_helpers import ray_start_client_server
 
-        ray.init(num_cpus=5, num_gpus=0)
+        ray.init(num_cpus=8, num_gpus=0)
         self.assertFalse(ray.util.client.ray.is_connected())
         with ray_start_client_server():
             self.assertTrue(ray.util.client.ray.is_connected())
