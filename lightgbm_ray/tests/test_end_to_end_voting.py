@@ -1,7 +1,7 @@
-from test_end_to_end import LGBMRayEndToEndTest as _LGBMRayEndToEndTest
+import test_end_to_end
 
 
-class LGBMRayEndToEndTestVoting(_LGBMRayEndToEndTest):
+class LGBMRayEndToEndTestVoting(test_end_to_end.LGBMRayEndToEndTest):
     def setUp(self):
         super().setUp()
         self.params["tree_learner"] = "voting"
