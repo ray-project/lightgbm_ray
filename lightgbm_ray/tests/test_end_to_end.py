@@ -357,12 +357,6 @@ class LGBMRayEndToEndTest(unittest.TestCase):
                           str(exc.__cause__.__cause__))
 
 
-class LGBMRayEndToEndTestVoting(LGBMRayEndToEndTest):
-    def setUp(self):
-        super().setUp()
-        self.params["tree_learner"] = "voting"
-
-
 if __name__ == "__main__":
     import pytest
     import sys

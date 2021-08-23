@@ -21,6 +21,7 @@ echo "============="
 END_STATUS=0
 if ! python -m pytest -v --durations=0 -x "test_lightgbm_api.py" ; then exit 1; fi
 if ! python -m pytest -v --durations=0 -x "test_end_to_end.py" ; then exit 1; fi
+if ! python -m pytest -v --durations=0 -x "test_end_to_end_voting.py" ; then exit 1; fi
 if ! python -m pytest -v -s --durations=0 -x "test_fault_tolerance.py" ; then exit 1; fi
 if ! python -m pytest -v --durations=0 -x "test_lightgbm.py" ; then exit 1; fi
 
