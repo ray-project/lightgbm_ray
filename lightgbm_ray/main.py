@@ -173,7 +173,13 @@ def _validate_ray_params(ray_params: Union[None, RayParams, dict]) \
             f"but it was {type(ray_params)}."
             f"\nFIX THIS preferably by passing a `RayParams` instance as "
             f"the `ray_params` parameter.")
-    if ray_params.num_actors < 2:
+    if ray_params.num_actors <= 0:
+        raise ValueError(
+            f"The `num_actors` parameter is set to 0. Please always specify "
+            f"the number of distributed actors you want to use."
+            f"\nFIX THIS by passing a `RayParams(num_actors=X)` argument "
+            f"to your call to lightgbm_ray.")
+    elif ray_params.num_actors < 2:
         warnings.warn(
             f"`num_actors` in `ray_params` is smaller than 2 "
             f"({ray_params.num_actors}). LightGBM will NOT be distributed!")
@@ -500,6 +506,7 @@ def _create_actor(
         num_cpus=num_cpus_per_actor,
         num_gpus=num_gpus_per_actor,
         resources=resources_per_actor,
+        placement_group_capture_child_tasks=True,
         placement_group=placement_group or DEFAULT_PG).remote(
             rank=rank,
             num_actors=num_actors,
