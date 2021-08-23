@@ -140,7 +140,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         self.assertSequenceEqual(test_y_second, list(pred_test))
 
     def _testJointTraining(self, cpus_per_actor):
-        ray.init(num_cpus=4, num_gpus=0)
+        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
 
         bst = train(
             self.params,
@@ -179,7 +179,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         return self._testJointTraining(cpus_per_actor=0)
 
     def testCpusPerActorEqualTo1RaisesException(self):
-        ray.init(num_cpus=4, num_gpus=0)
+        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
         with self.assertRaisesRegex(ValueError,
                                     "cpus_per_actor is set to less than 2"):
             train(
@@ -189,7 +189,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
                 ray_params=RayParams(num_actors=2, cpus_per_actor=1))
 
     def testBothEvalsAndValidSetsRaisesException(self):
-        ray.init(num_cpus=4, num_gpus=0)
+        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
         with self.assertRaisesRegex(
                 ValueError,
                 "Specifying both `evals` and `valid_sets` is ambiguous"):
@@ -205,7 +205,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
     def testTrainPredict(self, init=True, remote=None, **ray_param_dict):
         """Train with evaluation and predict"""
         if init:
-            ray.init(num_cpus=2, num_gpus=0)
+            ray.init(num_cpus=8, num_gpus=0, include_dashboard=False)
 
         dtrain = RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH)
 
@@ -270,7 +270,8 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             self.skipTest("Ray client mocks do not work in Ray <= 1.2.0")
         from ray.util.client.ray_client_helpers import ray_start_client_server
 
-        ray.init(num_cpus=2, num_gpus=0)
+        # (yard1) this hangs when num_cpus=2
+        ray.init(num_cpus=8, num_gpus=0, include_dashboard=False)
         self.assertFalse(ray.util.client.ray.is_connected())
         with ray_start_client_server():
             self.assertTrue(ray.util.client.ray.is_connected())
@@ -314,7 +315,7 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             self.skipTest("Ray client mocks do not work in Ray <= 1.2.0")
         from ray.util.client.ray_client_helpers import ray_start_client_server
 
-        ray.init(num_cpus=8, num_gpus=0)
+        ray.init(num_cpus=8, num_gpus=0, include_dashboard=False)
         self.assertFalse(ray.util.client.ray.is_connected())
         with ray_start_client_server():
             self.assertTrue(ray.util.client.ray.is_connected())
