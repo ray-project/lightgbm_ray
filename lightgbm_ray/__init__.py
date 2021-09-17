@@ -1,9 +1,9 @@
-from lightgbm_ray.main import RayParams, train, predict
-from xgboost_ray.matrix import RayDMatrix, RayDeviceQuantileDMatrix,\
-    RayFileType, RayShardingMode, \
-    Data, combine_data
+from .main import RayParams, train, predict
+from .thirdparty.xgboost_ray.matrix import (
+    RayDMatrix, RayDeviceQuantileDMatrix, RayFileType, RayShardingMode, Data,
+    combine_data)
 
-from lightgbm_ray.sklearn import RayLGBMClassifier, RayLGBMRegressor
+from .sklearn import RayLGBMClassifier, RayLGBMRegressor
 
 __version__ = "0.1.1"
 

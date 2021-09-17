@@ -8,8 +8,8 @@ import logging
 from lightgbm.basic import Booster
 from lightgbm.callback import CallbackEnv
 
-from xgboost_ray.session import put_queue
-from xgboost_ray.util import Unavailable, force_on_current_node
+from .thirdparty.xgboost_ray.session import put_queue
+from .thirdparty.xgboost_ray.util import Unavailable, force_on_current_node
 
 try:
     from ray import tune
@@ -32,10 +32,13 @@ try:
         _TuneCheckpointCallback as _OrigTuneCheckpointCallback, \
         TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback
 except ImportError:
+
+    class Dummy:
+        pass
     TuneReportCallback = _TuneCheckpointCallback = \
         TuneReportCheckpointCallback = Unavailable
     OrigTuneReportCallback = _OrigTuneCheckpointCallback = \
-        OrigTuneReportCheckpointCallback = object
+        OrigTuneReportCheckpointCallback = Dummy
 
 if not hasattr(OrigTuneReportCallback, "_get_report_dict"):
     TUNE_LEGACY = True

@@ -1,4 +1,4 @@
-from xgboost_ray.tests.utils import create_parquet
+from ..thirdparty.xgboost_ray.tests.utils import create_parquet
 
 
 def main():

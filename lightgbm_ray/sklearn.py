@@ -33,9 +33,9 @@ from typing import (Optional, Dict, Union, Type, Any, List, Callable)
 
 from lightgbm import LGBMModel, LGBMClassifier, LGBMRegressor  # LGBMRanker
 from lightgbm.basic import _choose_param_value, _ConfigAliases
-from xgboost_ray.sklearn_utils import (_wrap_evaluation_matrices,
-                                       _check_if_params_are_ray_dmatrix)
-from lightgbm_ray.main import train, predict, RayDMatrix, RayParams
+from .thirdparty.xgboost_ray.sklearn_utils import (
+    _wrap_evaluation_matrices, _check_if_params_are_ray_dmatrix)
+from .main import train, predict, RayDMatrix, RayParams
 
 import warnings
 import logging

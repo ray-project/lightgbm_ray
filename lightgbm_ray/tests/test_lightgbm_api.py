@@ -12,7 +12,7 @@ import ray
 from lightgbm_ray import RayDMatrix, train, RayParams, RayShardingMode
 from lightgbm_ray.tune import _TuneLGBMRank0Mixin
 
-from xgboost_ray.session import put_queue
+from lightgbm_ray.thirdparty.xgboost_ray.session import put_queue
 
 
 def gradient(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:

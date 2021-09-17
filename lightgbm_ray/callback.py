@@ -1,4 +1,4 @@
-from xgboost_ray.callback import (
+from .thirdparty.xgboost_ray.callback import (
     DistributedCallback, DistributedCallbackContainer, EnvironmentCallback)
 
 __all__ = [

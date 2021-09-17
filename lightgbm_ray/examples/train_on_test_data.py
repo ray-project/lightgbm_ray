@@ -4,7 +4,8 @@ import shutil
 import time
 
 from lightgbm_ray import train, RayDMatrix, RayParams
-from xgboost_ray.tests.utils import create_parquet_in_tempdir
+from lightgbm_ray.thirdparty.xgboost_ray.tests.utils import (
+    create_parquet_in_tempdir)
 
 ####
 # Run `create_test_data.py` first to create a large fake data set.

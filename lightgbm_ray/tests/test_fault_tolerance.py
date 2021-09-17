@@ -13,9 +13,10 @@ from sklearn.utils import shuffle
 import ray
 
 from lightgbm_ray import train, RayDMatrix, RayParams
-from xgboost_ray.session import get_actor_rank, put_queue
+from lightgbm_ray.thirdparty.xgboost_ray.session import (get_actor_rank,
+                                                         put_queue)
 
-from xgboost_ray.tests.utils import flatten_obj
+from lightgbm_ray.thirdparty.xgboost_ray.tests.utils import flatten_obj
 
 
 def get_num_trees(model_or_booster):

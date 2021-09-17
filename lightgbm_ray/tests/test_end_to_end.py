@@ -14,7 +14,7 @@ from ray.exceptions import RayActorError, RayTaskError
 
 from lightgbm_ray import RayParams, train, RayDMatrix, predict, RayShardingMode
 from lightgbm_ray.main import RayXGBoostTrainingError
-from xgboost_ray.callback import DistributedCallback
+from lightgbm_ray.thirdparty.xgboost_ray.callback import DistributedCallback
 
 # from sklearn.utils import shuffle
 

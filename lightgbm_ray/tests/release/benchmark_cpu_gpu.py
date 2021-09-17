@@ -8,7 +8,8 @@ import time
 import ray
 from lightgbm_ray import train, RayDMatrix, RayFileType, \
     RayDeviceQuantileDMatrix, RayParams
-from xgboost_ray.tests.utils import create_parquet_in_tempdir
+from lightgbm_ray.thirdparty.xgboost_ray.tests.utils import (
+    create_parquet_in_tempdir)
 
 if "OMP_NUM_THREADS" in os.environ:
     del os.environ["OMP_NUM_THREADS"]

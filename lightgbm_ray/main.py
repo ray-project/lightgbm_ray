@@ -47,7 +47,7 @@ from lightgbm.callback import CallbackEnv
 
 import ray
 
-from xgboost_ray.main import (
+from .thirdparty.xgboost_ray.main import (
     _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix,
     concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback,
     STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams as
@@ -58,11 +58,11 @@ from xgboost_ray.main import (
     RayXGBoostTrainingError, _create_placement_group, _shutdown,
     PlacementGroup, ActorHandle, combine_data, _trigger_data_load, DEFAULT_PG,
     _autodetect_resources as _autodetect_resources_base)
-from xgboost_ray.session import put_queue
-from xgboost_ray import RayDMatrix
+from .thirdparty.xgboost_ray.session import put_queue
+from .thirdparty.xgboost_ray import RayDMatrix
 
-from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
-from lightgbm_ray.tune import _try_add_tune_callback, _TuneLGBMRank0Mixin
+from .util import find_free_port, is_port_free, lgbm_network_free
+from .tune import _try_add_tune_callback, _TuneLGBMRank0Mixin
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -542,7 +542,7 @@ def _train(params: Dict,
     errors occur. It is called more than once if errors occurred (e.g. an
     actor died) and failure handling is enabled.
     """
-    from xgboost_ray.elastic import _maybe_schedule_new_actors, \
+    from .thirdparty.xgboost_ray.elastic import _maybe_schedule_new_actors, \
         _update_scheduled_actor_states, _get_actor_alive_status
 
     # Un-schedule possible scheduled restarts

@@ -1,0 +1,3 @@
+[submodule "lightgbm_ray/xgboost_ray"]
+	path = lightgbm_ray/thirdparty
+	url = https://github.com/ray-project/xgboost_ray.git

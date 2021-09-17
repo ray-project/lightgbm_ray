@@ -6,7 +6,8 @@ import pandas as pd
 import ray
 
 from lightgbm_ray import RayDMatrix, train, RayParams
-from xgboost_ray.data_sources.dask import DASK_INSTALLED
+from lightgbm_ray.thirdparty.xgboost_ray.data_sources.dask import (
+    DASK_INSTALLED)
 
 
 def main(cpus_per_actor, num_actors):
