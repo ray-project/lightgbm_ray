@@ -5,6 +5,8 @@ from typing import Dict, Union, List
 import ray
 import logging
 
+from ray.util.annotations import PublicAPI
+
 from lightgbm.basic import Booster
 from lightgbm.callback import CallbackEnv
 
@@ -266,6 +268,7 @@ def _try_add_tune_callback(kwargs: Dict):
         return False
 
 
+@PublicAPI(stability="beta")
 def load_model(model_path):
     """Loads the model stored in the provided model_path.
 

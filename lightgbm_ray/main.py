@@ -47,6 +47,7 @@ from lightgbm.basic import (_choose_param_value, _ConfigAliases, LightGBMError,
 from lightgbm.callback import CallbackEnv
 
 import ray
+from ray.util.annotations import PublicAPI
 
 from xgboost_ray.main import (
     _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix,
@@ -805,6 +806,7 @@ def _train(params: Dict,
     return bst, evals_result, _training_state.additional_results
 
 
+@PublicAPI(stability="beta")
 def train(
         params: Dict,
         dtrain: RayDMatrix,
@@ -1045,11 +1047,11 @@ def train(
 
     if gpus_per_actor > 0 and params["device_type"] == "cpu":
         warnings.warn(
-            f"GPUs have been assigned to the actors, but the current LightGBM "
-            f"device type is set to 'cpu'. Thus, GPUs will "
-            f"currently not be used. To enable GPUs usage, please set the "
-            f"`device_type` to a GPU-compatible option, "
-            f"e.g. `gpu`.")
+            "GPUs have been assigned to the actors, but the current LightGBM "
+            "device type is set to 'cpu'. Thus, GPUs will "
+            "currently not be used. To enable GPUs usage, please set the "
+            "`device_type` to a GPU-compatible option, "
+            "e.g. `gpu`.")
 
     if gpus_per_actor == 0 and cpus_per_actor == 0:
         raise ValueError("cpus_per_actor and gpus_per_actor both cannot be "
@@ -1332,6 +1334,7 @@ def _predict(model: LGBMModel, data: RayDMatrix, method: str,
     return combine_data(data.sharding, actor_results)
 
 
+@PublicAPI(stability="beta")
 def predict(model: Union[LGBMModel, Booster],
             data: RayDMatrix,
             method: str = "predict",

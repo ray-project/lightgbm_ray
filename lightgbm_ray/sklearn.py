@@ -27,6 +27,8 @@
 
 from typing import (Optional, Dict, Union, Type, Any, List, Callable)
 
+from ray.util.annotations import PublicAPI
+
 from lightgbm import LGBMModel, LGBMClassifier, LGBMRegressor  # LGBMRanker
 from lightgbm.basic import _choose_param_value, _ConfigAliases
 from xgboost_ray.sklearn import (_wrap_evaluation_matrices,
@@ -227,6 +229,7 @@ class _RayLGBMModel:
             setattr(dest, name, attributes[name])
 
 
+@PublicAPI(stability="beta")
 class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
     def fit(self,
             X,
@@ -320,6 +323,7 @@ RayLGBMClassifier.__init__.__doc__ = _treat_estimator_doc(
     LGBMClassifier.__init__.__doc__)
 
 
+@PublicAPI(stability="beta")
 class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
     def fit(self,
             X,
