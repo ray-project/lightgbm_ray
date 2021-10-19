@@ -139,7 +139,7 @@ class _RayLGBMModel:
             eval_init_score)
 
         if train_dmatrix is None:
-            train_dmatrix, evals = _wrap_evaluation_matrices(
+            wrap_evaluation_matrices_kwargs = dict(
                 missing=None,
                 X=X,
                 y=y,
@@ -158,6 +158,16 @@ class _RayLGBMModel:
                     **kwargs,
                     **ray_dmatrix_params
                 }))
+            try:
+                train_dmatrix, evals = _wrap_evaluation_matrices(
+                    **wrap_evaluation_matrices_kwargs)
+            except TypeError as e:
+                if "enable_categorical" in str(e):
+                    train_dmatrix, evals = _wrap_evaluation_matrices(
+                        **wrap_evaluation_matrices_kwargs,
+                        enable_categorical=False)
+                else:
+                    raise e
 
         eval_names = eval_names or []
 
