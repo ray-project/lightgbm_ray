@@ -51,14 +51,13 @@ from ray.util.annotations import PublicAPI
 from xgboost_ray.main import (
     _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix,
     concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback,
-    STATUS_FREQUENCY_S, RayActorError, pickle, _PrepareActorTask, RayParams as
-    RayXGBParams, _TrainingState, _is_client_connected, is_session_enabled,
+    ENV, RayActorError, pickle, _PrepareActorTask, RayParams as RayXGBParams,
+    _TrainingState, _is_client_connected, is_session_enabled,
     force_on_current_node, _assert_ray_support, _maybe_print_legacy_warning,
-    _Checkpoint, _create_communication_processes, TUNE_USING_PG,
-    _USE_SPREAD_STRATEGY, RayTaskError, RayXGBoostActorAvailable,
-    RayXGBoostTrainingError, _create_placement_group, _shutdown,
-    PlacementGroup, ActorHandle, combine_data, _trigger_data_load, DEFAULT_PG,
-    _autodetect_resources as _autodetect_resources_base)
+    _Checkpoint, _create_communication_processes, TUNE_USING_PG, RayTaskError,
+    RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group,
+    _shutdown, PlacementGroup, ActorHandle, combine_data, _trigger_data_load,
+    DEFAULT_PG, _autodetect_resources as _autodetect_resources_base)
 from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
@@ -176,10 +175,10 @@ def _validate_ray_params(ray_params: Union[None, RayParams, dict]) \
             f"the `ray_params` parameter.")
     if ray_params.num_actors <= 0:
         raise ValueError(
-            f"The `num_actors` parameter is set to 0. Please always specify "
-            f"the number of distributed actors you want to use."
-            f"\nFIX THIS by passing a `RayParams(num_actors=X)` argument "
-            f"to your call to lightgbm_ray.")
+            "The `num_actors` parameter is set to 0. Please always specify "
+            "the number of distributed actors you want to use."
+            "\nFIX THIS by passing a `RayParams(num_actors=X)` argument "
+            "to your call to lightgbm_ray.")
     elif ray_params.num_actors < 2:
         warnings.warn(
             f"`num_actors` in `ray_params` is smaller than 2 "
@@ -642,7 +641,7 @@ def _train(params: Dict,
         # Construct list before calling any() to force evaluation
         ready_states = [task.is_ready() for task in prepare_actor_tasks]
         while not all(ready_states):
-            if time.time() >= last_status + STATUS_FREQUENCY_S:
+            if time.time() >= last_status + ENV.STATUS_FREQUENCY_S:
                 wait_time = time.time() - start_wait
                 logger.info(f"Waiting until actors are ready "
                             f"({wait_time:.0f} seconds passed).")
@@ -700,7 +699,7 @@ def _train(params: Dict,
     # confilict, it can try and choose a new one. Most of the times
     # it will complete in one iteration
     machines = None
-    for i in range(5):
+    for _ in range(5):
         addresses = ray.get(
             [actor.find_free_address.remote() for actor in live_actors])
         if addresses:
@@ -764,7 +763,7 @@ def _train(params: Dict,
                 # This may raise RayXGBoostActorAvailable
                 _update_scheduled_actor_states(_training_state)
 
-            if time.time() >= last_status + STATUS_FREQUENCY_S:
+            if time.time() >= last_status + ENV.STATUS_FREQUENCY_S:
                 wait_time = time.time() - start_wait
                 logger.info(f"Training in progress "
                             f"({wait_time:.0f} seconds since last restart).")
@@ -1117,7 +1116,7 @@ def train(
                 evals.append((valid_data, f"valid_{i}"))
 
     if evals:
-        for (deval, name) in evals:
+        for (deval, _name) in evals:
             if not isinstance(deval, RayDMatrix):
                 raise ValueError("Evaluation data must be a `RayDMatrix`, got "
                                  f"{type(deval)}.")
@@ -1151,7 +1150,7 @@ def train(
                 placement_strategy = None
             else:
                 placement_strategy = "PACK"
-        elif bool(_USE_SPREAD_STRATEGY):
+        elif ENV.USE_SPREAD_STRATEGY:
             placement_strategy = "SPREAD"
 
     if placement_strategy is not None:
