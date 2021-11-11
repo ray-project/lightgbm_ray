@@ -975,6 +975,11 @@ def train(
         raise ValueError(
             "Specifying both `evals` and `valid_sets` is ambiguous.")
 
+    if kwargs.get("early_stopping_rounds", None) is not None:
+        raise RuntimeError(
+            "early_stopping_rounds is not currently supported in "
+            "lightgbm-ray")
+
     # LightGBM specific - capture whether local_listen_port or its aliases
     # were provided
     listen_port_in_params = any(
