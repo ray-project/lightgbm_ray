@@ -506,7 +506,7 @@ More examples
 -------------
 
 For complete end to end examples, please have a look at
-the [examples folder](examples/):
+the [examples folder](lightgbm_ray/examples/):
 
 * [Simple sklearn breastcancer dataset example](lightgbm_ray/examples/simple.py) (requires `sklearn`)
 * [HIGGS classification example](lightgbm_ray/examples/higgs.py) 
