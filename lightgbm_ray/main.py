@@ -31,6 +31,7 @@ from typing import (Tuple, Dict, Any, List, Optional, Type, Union, Sequence,
                     Callable)
 from copy import deepcopy
 from dataclasses import dataclass
+from distutils.version import LooseVersion
 
 import time
 import logging
@@ -41,6 +42,7 @@ import gc
 import numpy as np
 import pandas as pd
 
+import lightgbm
 from lightgbm import LGBMModel, LGBMRanker, Booster
 from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError
 from lightgbm.callback import CallbackEnv
@@ -68,6 +70,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 ELASTIC_RESTART_DISABLED = True
+LIGHTGBM_VERSION = LooseVersion(lightgbm.__version__)
 
 
 class StopException(Exception):
@@ -368,6 +371,15 @@ class RayLightGBMActor(RayXGBoostActor):
             if isinstance(callback, _TuneLGBMRank0Mixin):
                 callback.is_rank_0 = return_bst
         kwargs["callbacks"] = callbacks
+
+        if LIGHTGBM_VERSION < LooseVersion("3.3.0"):
+            # In lightgbm<3.3.0, verbosity doesn't always work as a parameter
+            # but passing it as kwarg to fit does
+            local_params = _choose_param_value(
+                main_param_name="verbosity",
+                params=local_params,
+                default_value=1)
+            kwargs["verbose"] = local_params.pop("verbosity")
 
         result_dict = {}
         error_dict = {}
@@ -1070,8 +1082,10 @@ def train(
             warnings.warn(f"Parameter {param_alias} will be ignored.")
             params.pop(param_alias)
 
-    if not ("verbose" in kwargs and verbose_eval is True):
-        kwargs["verbose"] = verbose_eval
+    if not verbose_eval and not any(
+            verbose_alias in params
+            for verbose_alias in _ConfigAliases.get("verbosity")):
+        params["verbose"] = -1
 
     if gpus_per_actor > 0 and params["device_type"] == "cpu":
         warnings.warn(
