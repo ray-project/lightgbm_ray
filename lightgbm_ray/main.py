@@ -1070,8 +1070,8 @@ def train(
             warnings.warn(f"Parameter {param_alias} will be ignored.")
             params.pop(param_alias)
 
-    if not ("verbose" in kwargs and verbose_eval is True):
-        kwargs["verbose"] = verbose_eval
+    if not ("verbose" in params and verbose_eval is True):
+        params["verbose"] = verbose_eval
 
     if gpus_per_actor > 0 and params["device_type"] == "cpu":
         warnings.warn(
