@@ -23,6 +23,8 @@ def main(cpus_per_actor, num_actors):
     x, y = shuffle(x, y, random_state=1)
 
     data = pd.DataFrame(x)
+    # Ray Datasets require all columns to be string
+    data.columns = [str(c) for c in data.columns]
     data["label"] = y
 
     # There was recent API change - the first clause covers the new
