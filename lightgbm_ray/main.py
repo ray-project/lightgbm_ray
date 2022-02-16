@@ -46,7 +46,7 @@ import pandas as pd
 import lightgbm
 from lightgbm import LGBMModel, LGBMRanker, Booster
 from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError
-from lightgbm.callback import CallbackEnv
+from lightgbm.callback import CallbackEnv, record_evaluation
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -361,12 +361,15 @@ class RayLightGBMActor(RayXGBoostActor):
             local_eval_sample_weights.append(self._data[deval]["weight"])
             local_eval_init_scores.append(self._data[deval]["base_margin"])
 
+        evals_result = {}
+
         if "callbacks" in kwargs:
             callbacks = kwargs["callbacks"] or []
         else:
             callbacks = []
         callbacks.append(self._save_checkpoint_callback(is_rank_0=return_bst))
         callbacks.append(self._stop_callback(is_rank_0=return_bst))
+        callbacks.append(record_evaluation(evals_result))
         for callback in callbacks:
             if isinstance(callback, _TuneLGBMRank0Mixin):
                 callback.is_rank_0 = return_bst
@@ -381,7 +384,10 @@ class RayLightGBMActor(RayXGBoostActor):
                 default_value=1)
             kwargs["verbose"] = local_params.pop("verbosity")
 
-        result_dict = {"train_n": self._local_n[dtrain]}
+        result_dict = {
+            "train_n": self._local_n[dtrain],
+            "evals_result": evals_result
+        }
         error_dict = {}
 
         network_params = self.network_params
@@ -454,10 +460,11 @@ class RayLightGBMActor(RayXGBoostActor):
         while thread.is_alive():
             thread.join(timeout=0)
             if self._stop_event.is_set() and "bst" not in result_dict:
+                self._distributed_callbacks.after_train(self, result_dict)
                 return result_dict
             time.sleep(0.1)
 
-        if "evals_result" not in result_dict:
+        if "bst" not in result_dict:
             if self._stop_event.is_set():
                 return result_dict
             raise_from = error_dict.get("exception", None)
