@@ -318,7 +318,7 @@ class LGBMRayTest(unittest.TestCase):
             ly = dy
             lw = dw
 
-        n_estimators = 200
+        n_estimators = 400
         params = {
             "n_estimators": n_estimators,
             "num_leaves": 31,
@@ -326,7 +326,7 @@ class LGBMRayTest(unittest.TestCase):
             "deterministic": True,
         }
 
-        callbacks = [lgb.early_stopping(2)]
+        callbacks = [lgb.early_stopping(1)]
 
         ray_classifier = RayLGBMClassifier(**params)
         ray_classifier = ray_classifier.fit(
@@ -594,7 +594,7 @@ class LGBMRayTest(unittest.TestCase):
             ly = dy
             lw = dw
 
-        n_estimators = 200
+        n_estimators = 400
         params = {
             "random_state": 42,
             "num_leaves": 31,
@@ -602,7 +602,7 @@ class LGBMRayTest(unittest.TestCase):
             "deterministic": True,
         }
 
-        callbacks = [lgb.early_stopping(2)]
+        callbacks = [lgb.early_stopping(1)]
 
         ray_regressor = RayLGBMRegressor(**params)
         ray_regressor = ray_regressor.fit(
