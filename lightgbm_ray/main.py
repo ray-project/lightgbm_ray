@@ -257,7 +257,8 @@ class RayLightGBMActor(RayXGBoostActor):
                 except RayActorError:
                     raise StopException()
 
-            _callback.order = 2  # type: ignore
+            _callback.order = 1  # type: ignore
+            _callback.before_iteration = True  # type: ignore
             return _callback
 
         return _stop_callback()
