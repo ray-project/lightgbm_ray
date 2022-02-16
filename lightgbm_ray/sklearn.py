@@ -118,11 +118,6 @@ class _RayLGBMModel:
                  ray_dmatrix_params: Optional[Dict] = None,
                  **kwargs: Any) -> "_RayLGBMModel":
 
-        if early_stopping_rounds is not None:
-            raise RuntimeError(
-                "early_stopping_rounds is not currently supported in "
-                "lightgbm-ray")
-
         params = self.get_params(True)
 
         ray_params = self._ray_set_ray_params_n_jobs(ray_params,
@@ -190,6 +185,7 @@ class _RayLGBMModel:
             model_factory=model_factory,
             evals=evals,
             eval_metric=eval_metric,
+            early_stopping_rounds=early_stopping_rounds,
             ray_params=ray_params,
             _remote=_remote,
             **kwargs)

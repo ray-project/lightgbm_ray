@@ -52,6 +52,7 @@ data_output = [
     "dataframe-with-categorical",
     "raydmatrix-interleaved",  # "raydmatrix-batch"
 ]
+data_output_local = [x for x in data_output if "raydmatrix" not in x]
 boosting_types = ["gbdt"]  # "dart", "goss", "rf"]
 distributed_training_algorithms = ["data", "voting"]
 
@@ -229,9 +230,14 @@ class LGBMRayTest(unittest.TestCase):
             sample_weight=dw,
             ray_params=self.ray_params,
             eval_set=eval_set,
-            eval_sample_weight=eval_weights)
+            eval_sample_weight=eval_weights,
+        )
         ray_classifier = ray_classifier.fit(
-            dX, dy, sample_weight=dw, ray_params=self.ray_params)
+            dX,
+            dy,
+            sample_weight=dw,
+            ray_params=self.ray_params,
+        )
         p1 = ray_classifier.predict(dX, ray_params=self.ray_params)
         p1_proba = ray_classifier.predict_proba(dX, ray_params=self.ray_params)
         p1_pred_leaf = ray_classifier.predict(
@@ -240,7 +246,11 @@ class LGBMRayTest(unittest.TestCase):
         s1 = accuracy_score(ly, p1)
 
         local_classifier = lgb.LGBMClassifier(**params)
-        local_classifier.fit(lX, ly, sample_weight=lw)
+        local_classifier.fit(
+            lX,
+            ly,
+            sample_weight=lw,
+        )
         p2 = local_classifier.predict(lX)
         p2_proba = local_classifier.predict_proba(lX)
         s2 = local_classifier.score(lX, ly)
@@ -257,6 +267,107 @@ class LGBMRayTest(unittest.TestCase):
             self.assertTrue(np.allclose(p1_proba, p2_proba, atol=0.1))
             self.assertTrue(np.allclose(p1_local, p2))
             self.assertTrue(np.allclose(p1_local, ly))
+
+        # pref_leaf values should have the right shape
+        # and values that look like valid tree nodes
+        pred_leaf_vals = p1_pred_leaf
+        assert pred_leaf_vals.shape == (lX.shape[0],
+                                        ray_classifier.booster_.num_trees())
+        assert np.max(pred_leaf_vals) <= params["num_leaves"]
+        assert np.min(pred_leaf_vals) >= 0
+        assert len(np.unique(pred_leaf_vals)) <= params["num_leaves"]
+
+        # be sure LightGBM actually used at least one categorical column,
+        # and that it was correctly treated as a categorical feature
+        if output == "dataframe-with-categorical":
+            cat_cols = [
+                col for col in dX.columns if dX.dtypes[col].name == "category"
+            ]
+            tree_df = ray_classifier.booster_.trees_to_dataframe()
+            node_uses_cat_col = tree_df["split_feature"].isin(cat_cols)
+            assert node_uses_cat_col.sum() > 0
+            assert tree_df.loc[node_uses_cat_col, "decision_type"].unique()[
+                0] == "=="
+
+    @parameterized.expand(
+        list(
+            itertools.product(
+                data_output_local,
+                ["binary-classification", "multiclass-classification"],
+            )))
+    def testClassifierEarlyStopping(self, output, task):
+        ray.init(num_cpus=4, num_gpus=0)
+
+        print(output, task)
+
+        X, y, w, _, dX, dy, dw, _, dX_test, dy_test, dw_test = _create_data(
+            objective=task, output=output)
+
+        eval_weights = [dw_test]
+        if dy_test is None:
+            dy_test = "test"
+            eval_weights = None
+        eval_set = [(dX_test, dy_test)]
+
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+
+        n_estimators = 200
+        params = {
+            "n_estimators": n_estimators,
+            "num_leaves": 31,
+            "random_state": 1,
+            "deterministic": True,
+        }
+
+        callbacks = [lgb.early_stopping(2)]
+
+        ray_classifier = RayLGBMClassifier(**params)
+        ray_classifier = ray_classifier.fit(
+            dX,
+            dy,
+            sample_weight=dw,
+            ray_params=self.ray_params,
+            eval_set=eval_set,
+            eval_sample_weight=eval_weights,
+            callbacks=callbacks)
+
+        self.assertLess(
+            len(ray_classifier.evals_result_["valid_0"]["binary_logloss"]),
+            n_estimators)
+
+        p1 = ray_classifier.predict(dX, ray_params=self.ray_params)
+        p1_proba = ray_classifier.predict_proba(dX, ray_params=self.ray_params)
+        p1_pred_leaf = ray_classifier.predict(
+            dX, pred_leaf=True, ray_params=self.ray_params)
+        p1_local = ray_classifier.to_local().predict(lX)
+        s1 = accuracy_score(ly, p1)
+
+        local_classifier = lgb.LGBMClassifier(**params)
+        local_classifier.fit(
+            lX,
+            ly,
+            sample_weight=lw,
+            eval_set=eval_set,
+            eval_sample_weight=eval_weights,
+            callbacks=callbacks)
+        p2 = local_classifier.predict(lX)
+        p2_proba = local_classifier.predict_proba(lX)
+        s2 = local_classifier.score(lX, ly)
+
+        self.assertTrue(np.allclose(s1, s2))
+        self.assertTrue(np.allclose(p1, p2))
+        self.assertTrue(np.allclose(p1, ly))
+        self.assertTrue(np.allclose(p2, ly))
+        self.assertTrue(np.allclose(p1_proba, p2_proba, atol=0.1))
+        self.assertTrue(np.allclose(p1_local, p2))
+        self.assertTrue(np.allclose(p1_local, ly))
 
         # pref_leaf values should have the right shape
         # and values that look like valid tree nodes
@@ -405,9 +516,14 @@ class LGBMRayTest(unittest.TestCase):
             sample_weight=dw,
             ray_params=self.ray_params,
             eval_set=eval_set,
-            eval_sample_weight=eval_weights)
+            eval_sample_weight=eval_weights,
+        )
         ray_regressor = ray_regressor.fit(
-            dX, dy, sample_weight=dw, ray_params=self.ray_params)
+            dX,
+            dy,
+            sample_weight=dw,
+            ray_params=self.ray_params,
+        )
         p1 = ray_regressor.predict(dX, ray_params=self.ray_params)
         p1_pred_leaf = ray_regressor.predict(
             dX, pred_leaf=True, ray_params=self.ray_params)
@@ -417,7 +533,106 @@ class LGBMRayTest(unittest.TestCase):
         s1_local = ray_regressor.to_local().score(lX, ly)
 
         local_regressor = lgb.LGBMRegressor(**params)
-        local_regressor.fit(lX, ly, sample_weight=lw)
+        local_regressor.fit(
+            lX,
+            ly,
+            sample_weight=lw,
+        )
+        s2 = local_regressor.score(lX, ly)
+        p2 = local_regressor.predict(lX)
+
+        # Scores should be the same
+        self.assertTrue(np.allclose(s1, s2, atol=0.01))
+        self.assertTrue(np.allclose(s1, s1_local))
+
+        # Predictions should be roughly the same.
+        self.assertTrue(np.allclose(p1, p1_local))
+
+        # pref_leaf values should have the right shape
+        # and values that look like valid tree nodes
+        pred_leaf_vals = p1_pred_leaf
+        assert pred_leaf_vals.shape == (lX.shape[0],
+                                        ray_regressor.booster_.num_trees())
+        assert np.max(pred_leaf_vals) <= params["num_leaves"]
+        assert np.min(pred_leaf_vals) >= 0
+        assert len(np.unique(pred_leaf_vals)) <= params["num_leaves"]
+
+        self.assertTrue(np.allclose(p2, ly, rtol=0.5, atol=50.))
+        self.assertTrue(np.allclose(p1, ly, rtol=0.5, atol=50.))
+
+        # be sure LightGBM actually used at least one categorical column,
+        # and that it was correctly treated as a categorical feature
+        if output == "dataframe-with-categorical":
+            cat_cols = [
+                col for col in dX.columns if dX.dtypes[col].name == "category"
+            ]
+            tree_df = ray_regressor.booster_.trees_to_dataframe()
+            node_uses_cat_col = tree_df["split_feature"].isin(cat_cols)
+            assert node_uses_cat_col.sum() > 0
+            assert tree_df.loc[node_uses_cat_col, "decision_type"].unique()[
+                0] == "=="
+
+    @parameterized.expand(data_output_local)
+    def testRegressorEarlyStopping(self, output):
+        ray.init(num_cpus=4, num_gpus=0)
+
+        X, y, w, _, dX, dy, dw, _, dX_test, dy_test, dw_test = _create_data(
+            objective="regression", output=output)
+
+        eval_weights = [dw_test]
+        if dy_test is None:
+            dy_test = "test"
+            eval_weights = None
+        eval_set = [(dX_test, dy_test)]
+
+        if "raydmatrix" in output:
+            lX = X
+            ly = y
+            lw = w
+        else:
+            lX = dX
+            ly = dy
+            lw = dw
+
+        n_estimators = 200
+        params = {
+            "random_state": 42,
+            "num_leaves": 31,
+            "n_estimators": n_estimators,
+            "deterministic": True,
+        }
+
+        callbacks = [lgb.early_stopping(2)]
+
+        ray_regressor = RayLGBMRegressor(**params)
+        ray_regressor = ray_regressor.fit(
+            dX,
+            dy,
+            sample_weight=dw,
+            ray_params=self.ray_params,
+            eval_set=eval_set,
+            eval_sample_weight=eval_weights,
+            callbacks=callbacks)
+
+        self.assertLess(
+            len(ray_regressor.evals_result_["valid_0"]["l2"]), n_estimators)
+
+        p1 = ray_regressor.predict(dX, ray_params=self.ray_params)
+        p1_pred_leaf = ray_regressor.predict(
+            dX, pred_leaf=True, ray_params=self.ray_params)
+
+        s1 = r2_score(ly, p1)
+        p1_local = ray_regressor.to_local().predict(lX)
+        s1_local = ray_regressor.to_local().score(lX, ly)
+
+        local_regressor = lgb.LGBMRegressor(**params)
+        local_regressor.fit(
+            lX,
+            ly,
+            sample_weight=lw,
+            eval_set=eval_set,
+            eval_sample_weight=eval_weights,
+            callbacks=callbacks)
         s2 = local_regressor.score(lX, ly)
         p2 = local_regressor.predict(lX)
 
