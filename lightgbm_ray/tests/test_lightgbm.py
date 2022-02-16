@@ -339,7 +339,7 @@ class LGBMRayTest(unittest.TestCase):
             callbacks=callbacks)
 
         self.assertLess(
-            len(ray_classifier.evals_result_["valid_0"]["binary_logloss"]),
+            len(list(ray_classifier.evals_result_["valid_0"].values())[0]),
             n_estimators)
 
         p1 = ray_classifier.predict(dX, ray_params=self.ray_params)
@@ -615,7 +615,8 @@ class LGBMRayTest(unittest.TestCase):
             callbacks=callbacks)
 
         self.assertLess(
-            len(ray_regressor.evals_result_["valid_0"]["l2"]), n_estimators)
+            len(list(ray_regressor.evals_result_["valid_0"].values())[0]),
+            n_estimators)
 
         p1 = ray_regressor.predict(dX, ray_params=self.ray_params)
         p1_pred_leaf = ray_regressor.predict(
