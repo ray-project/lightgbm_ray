@@ -112,16 +112,10 @@ class _RayLGBMModel:
                  eval_group=None,
                  eval_metric: Optional[Union[Callable, str, List[Union[
                      Callable, str]]]] = None,
-                 early_stopping_rounds: Optional[int] = None,
                  ray_params: Union[None, RayParams, Dict] = None,
                  _remote: Optional[bool] = None,
                  ray_dmatrix_params: Optional[Dict] = None,
                  **kwargs: Any) -> "_RayLGBMModel":
-
-        if early_stopping_rounds is not None:
-            raise RuntimeError(
-                "early_stopping_rounds is not currently supported in "
-                "lightgbm-ray")
 
         params = self.get_params(True)
 
@@ -257,7 +251,6 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             eval_init_score=None,
             eval_metric: Optional[Union[Callable, str, List[Union[
                 Callable, str]]]] = None,
-            early_stopping_rounds: Optional[int] = None,
             ray_params: Union[None, RayParams, Dict] = None,
             _remote: Optional[bool] = None,
             ray_dmatrix_params: Optional[Dict] = None,
@@ -274,7 +267,6 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             eval_class_weight=eval_class_weight,
             eval_init_score=eval_init_score,
             eval_metric=eval_metric,
-            early_stopping_rounds=early_stopping_rounds,
             ray_params=ray_params,
             _remote=_remote,
             ray_dmatrix_params=ray_dmatrix_params,
@@ -350,7 +342,6 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
             eval_init_score=None,
             eval_metric: Optional[Union[Callable, str, List[Union[
                 Callable, str]]]] = None,
-            early_stopping_rounds: Optional[int] = None,
             ray_params: Union[None, RayParams, Dict] = None,
             _remote: Optional[bool] = None,
             ray_dmatrix_params: Optional[Dict] = None,
@@ -366,7 +357,6 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
             eval_sample_weight=eval_sample_weight,
             eval_init_score=eval_init_score,
             eval_metric=eval_metric,
-            early_stopping_rounds=early_stopping_rounds,
             ray_params=ray_params,
             _remote=_remote,
             ray_dmatrix_params=ray_dmatrix_params,
