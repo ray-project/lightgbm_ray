@@ -38,9 +38,14 @@ Usage
 -----
 LightGBM-Ray provides a drop-in replacement for LightGBM's `train`
 function. To pass data, a `RayDMatrix` object is required, common
-with XGBoost-Ray.
+with XGBoost-Ray. You can also use a scikit-learn
+interface - see next section.
 
-Distributed training parameters are configured with a
+Just as in original `lgbm.train()` function, the 
+[training parameters](https://lightgbm.readthedocs.io/en/latest/Parameters.html)
+are passed as the `params` dictionary.
+
+Ray-specific distributed training parameters are configured with a
 `lightgbm_ray.RayParams` object. For instance, you can set
 the `num_actors` property to specify how many distributed actors
 you would like to use.
@@ -196,7 +201,8 @@ columns = [
 dtrain = RayDMatrix(
     path, 
     label="passenger_count",  # Will select this column as the label
-    columns=columns, 
+    columns=columns,
+    # ignore=["total_amount"],  # Optional list of columns to ignore
     filetype=RayFileType.PARQUET)
 ```
 
@@ -309,7 +315,9 @@ the `num_actors` argument.
 ### Multi GPU training
 LightGBM-Ray enables multi GPU training. The LightGBM core backend
 will automatically handle communication.
-All you have to do is to start one actor per GPU.
+All you have to do is to start one actor per GPU and set LightGBM's
+`device_type` to a GPU-compatible option, eg. `gpu` (see LightGBM
+documentation for more details.) 
 
 For instance, if you have 2 machines with 4 GPUs each, you will want
 to start 8 remote actors, and set `gpus_per_actor=1`. There is usually
@@ -393,7 +401,8 @@ ray_params = RayDMatrix([
 ```
 
 Lastly, LightGBM-Ray supports **distributed dataframe** representations, such
-as [Modin](https://modin.readthedocs.io/en/latest/) and 
+as [Ray Datasets](https://docs.ray.io/en/latest/data/dataset.html),
+[Modin](https://modin.readthedocs.io/en/latest/) and 
 [Dask dataframes](https://docs.dask.org/en/latest/dataframe.html)
 (used with [Dask on Ray](https://docs.ray.io/en/master/dask-on-ray.html)). 
 Here, LightGBM-Ray will check on which nodes the distributed partitions 
@@ -412,6 +421,8 @@ ray_params = RayDMatrix(existing_modin_df)
 
 ### Data sources
 
+The following data sources can be used with a `RayDMatrix` object.
+
 | Type                                                             | Centralized loading | Distributed loading |
 |------------------------------------------------------------------|---------------------|---------------------|
 | Numpy array                                                      | Yes                 | No                  |
@@ -420,8 +431,8 @@ ray_params = RayDMatrix(existing_modin_df)
 | Multi CSV                                                        | Yes                 | Yes                 |
 | Single Parquet                                                   | Yes                 | No                  |
 | Multi Parquet                                                    | Yes                 | Yes                 |
+| [Ray Dataset](https://docs.ray.io/en/latest/data/dataset.html)   | Yes                 | Yes                 |
 | [Petastorm](https://github.com/uber/petastorm)                   | Yes                 | Yes                 |
-| [Ray MLDataset](https://docs.ray.io/en/master/iter.html)         | Yes                 | Yes                 |
 | [Dask dataframe](https://docs.dask.org/en/latest/dataframe.html) | Yes                 | Yes                 |
 | [Modin dataframe](https://modin.readthedocs.io/en/latest/)       | Yes                 | Yes                 |
 
@@ -487,7 +498,7 @@ to implement placement strategies for better fault tolerance.
 By default, a SPREAD strategy is used for training, which attempts to spread all of the training workers
 across the nodes in a cluster on a best-effort basis. This improves fault tolerance since it minimizes the 
 number of worker failures when a node goes down, but comes at a cost of increased inter-node communication
-To disable this strategy, set the `USE_SPREAD_STRATEGY` environment variable to 0. If disabled, no
+To disable this strategy, set the `RXGB_USE_SPREAD_STRATEGY` environment variable to 0. If disabled, no
 particular placement strategy will be used.
 
 <!-- Note that this strategy is used only when `elastic_training` is not used. If `elastic_training` is set to `True`,
@@ -499,7 +510,7 @@ goes down, it will be less likely to impact multiple trials.
 
 When placement strategies are used, LightGBM-Ray will wait for 100 seconds for the required resources
 to become available, and will fail if the required resources cannot be reserved and the cluster cannot autoscale
-to increase the number of resources. You can change the `PLACEMENT_GROUP_TIMEOUT_S` environment variable to modify 
+to increase the number of resources. You can change the `RXGB_PLACEMENT_GROUP_TIMEOUT_S` environment variable to modify 
 how long this timeout should be. 
 
 More examples
