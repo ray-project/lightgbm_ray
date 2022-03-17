@@ -41,7 +41,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
                 "tree_learner": "data",
                 "metrics": ["multi_logloss", "multi_error"]
             },
-            "num_boost_round": tune.choice([1, 3])
+            "num_boost_round": tune.grid_search([1, 3])
         }
 
         def train_func(ray_params, callbacks=None, **kwargs):
@@ -75,7 +75,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
             self.train_func(ray_params),
             config=self.params,
             resources_per_trial=ray_params.get_tune_resources(),
-            num_samples=2)
+            num_samples=1)
 
         self.assertSequenceEqual(
             list(analysis.results_df["training_iteration"]),
