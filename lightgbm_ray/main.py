@@ -38,6 +38,7 @@ import logging
 import os
 import warnings
 import gc
+import threading
 
 import numpy as np
 import pandas as pd
@@ -45,7 +46,7 @@ import pandas as pd
 import lightgbm
 from lightgbm import LGBMModel, LGBMRanker, Booster
 from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError
-from lightgbm.callback import CallbackEnv
+from lightgbm.callback import CallbackEnv, record_evaluation
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -256,7 +257,7 @@ class RayLightGBMActor(RayXGBoostActor):
                 except RayActorError:
                     raise StopException()
 
-            _callback.order = 2  # type: ignore
+            _callback.order = 1  # type: ignore
             _callback.before_iteration = True  # type: ignore
             return _callback
 
@@ -361,12 +362,15 @@ class RayLightGBMActor(RayXGBoostActor):
             local_eval_sample_weights.append(self._data[deval]["weight"])
             local_eval_init_scores.append(self._data[deval]["base_margin"])
 
+        evals_result = {}
+
         if "callbacks" in kwargs:
             callbacks = kwargs["callbacks"] or []
         else:
             callbacks = []
         callbacks.append(self._save_checkpoint_callback(is_rank_0=return_bst))
         callbacks.append(self._stop_callback(is_rank_0=return_bst))
+        callbacks.append(record_evaluation(evals_result))
         for callback in callbacks:
             if isinstance(callback, _TuneLGBMRank0Mixin):
                 callback.is_rank_0 = return_bst
@@ -381,7 +385,10 @@ class RayLightGBMActor(RayXGBoostActor):
                 default_value=1)
             kwargs["verbose"] = local_params.pop("verbosity")
 
-        result_dict = {}
+        result_dict = {
+            "train_n": self._local_n[dtrain],
+            "evals_result": evals_result
+        }
         error_dict = {}
 
         network_params = self.network_params
@@ -429,27 +436,43 @@ class RayLightGBMActor(RayXGBoostActor):
                     result_dict.update({
                         "bst": model,
                         "evals_result": model.evals_result_,
-                        "train_n": self._local_n[dtrain]
                     })
+                    self._stop_event.set()
             except StopException:
                 # Usually this should be caught by XGBoost core.
                 # Silent fail, will be raised as RayXGBoostTrainingStopped.
-
                 return
             except LightGBMError as e:
                 error_dict.update({"exception": e})
                 return
 
-        _train()
+        # When early stopping is on, all the other actors will fail
+        # with a Socket recv error whenever one of the actors
+        # stops. In order to differentiate that case from
+        # genuine errors, we set the stop event after
+        # at least one model is returned.
 
-        if not result_dict:
+        # Therefore, if stop event is set, then at least one actor
+        # has completed training and returned a fitted model.
+
+        thread = threading.Thread(target=_train)
+        thread.daemon = True
+        thread.start()
+        while thread.is_alive():
+            thread.join(timeout=0)
+            if self._stop_event.is_set() and "bst" not in result_dict:
+                self._distributed_callbacks.after_train(self, result_dict)
+                return result_dict
+            time.sleep(0.1)
+
+        if "bst" not in result_dict:
+            if self._stop_event.is_set():
+                return result_dict
             raise_from = error_dict.get("exception", None)
             raise RayXGBoostTrainingError("Training failed.") from raise_from
 
+        thread.join()
         self._distributed_callbacks.after_train(self, result_dict)
-
-        if not return_bst:
-            result_dict.pop("bst", None)
 
         return result_dict
 
@@ -711,7 +734,7 @@ def _train(params: Dict,
     # confilict, it can try and choose a new one. Most of the times
     # it will complete in one iteration
     machines = None
-    for _ in range(5):
+    for n in range(5):
         addresses = ray.get(
             [actor.find_free_address.remote() for actor in live_actors])
         if addresses:
@@ -727,7 +750,7 @@ def _train(params: Dict,
             else:
                 logger.debug("Couldn't obtain unique addresses, trying again.")
     if machines:
-        logger.debug(f"Obtained unique addresses in {i} attempts.")
+        logger.debug(f"Obtained unique addresses in {n} attempts.")
     else:
         raise ValueError(
             f"Couldn't obtain enough unique addresses for {len(live_actors)}."
@@ -811,10 +834,20 @@ def _train(params: Dict,
     # Get all results from all actors.
     all_results: List[Dict[str, Any]] = ray.get(training_futures)
 
-    # All results should be the same. But only
-    # the first one actually returns its bst object.
-    bst: LGBMModel = all_results[0]["bst"]
-    evals_result = all_results[0]["evals_result"]
+    # All results should be the same.
+    # Unlike XGBoost-Ray, we cannot be sure that rank 0 will be
+    # the one to return the booster, as early stopping is non-deterministic.
+    # However, if the training succeded, at least one result
+    # will have a booster.
+    try:
+        result_with_booster = next(
+            result for result in all_results if "bst" in result)
+    except StopIteration:
+        raise RuntimeError(
+            "No actor returned a fitted model. "
+            "This means training was not completed successfully.")
+    bst: LGBMModel = result_with_booster["bst"]
+    evals_result = result_with_booster["evals_result"]
 
     if not listen_port:
         for param in _ConfigAliases.get("local_listen_port"):
@@ -986,11 +1019,6 @@ def train(
     if evals and valid_sets:
         raise ValueError(
             "Specifying both `evals` and `valid_sets` is ambiguous.")
-
-    if kwargs.get("early_stopping_rounds", None) is not None:
-        raise RuntimeError(
-            "early_stopping_rounds is not currently supported in "
-            "lightgbm-ray")
 
     # LightGBM specific - capture whether local_listen_port or its aliases
     # were provided
