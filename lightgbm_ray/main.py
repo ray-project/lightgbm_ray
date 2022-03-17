@@ -777,11 +777,12 @@ def _train(params: Dict,
     start_wait = time.time()
     last_status = start_wait
 
-    # When the number of trees/dataset size is very small, LightGBM can be too fast,
-    # finishing before the queue Actor gets to process the calls it recieved.
-    # This is a very rare edge case. In order to mitigate,
-    # if the queue has not been handled before, wait simply wait a moment
-    # before checking it one last time.
+    # When the number of trees/dataset size is very small,
+    # training can be too fast and finish before the queue Actor
+    # gets to process the calls it has recieved. This is a very rare edge
+    # case, but it can show up in CI.
+    # In order to mitigate, if the queue has not been handled before,
+    # we simply wait a moment before checking it one last time.
     has_queue_been_handled = False
     try:
         not_ready = training_futures
