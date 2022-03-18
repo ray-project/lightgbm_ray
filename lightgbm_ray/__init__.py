@@ -5,7 +5,7 @@ from xgboost_ray.matrix import RayDMatrix, RayDeviceQuantileDMatrix,\
 
 from lightgbm_ray.sklearn import RayLGBMClassifier, RayLGBMRegressor
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 __all__ = [
     "__version__", "RayParams", "RayDMatrix", "RayDeviceQuantileDMatrix",
