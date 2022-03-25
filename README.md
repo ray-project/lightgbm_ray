@@ -1,41 +1,42 @@
-Distributed LightGBM on Ray
-==========================
+<!--$UNCOMMENT(lightgbm-ray)=-->
+
+# Distributed LightGBM on Ray
+<!--$REMOVE-->
 ![Build Status](https://github.com/ray-project/lightgbm_ray/workflows/pytest%20on%20push/badge.svg)
 [![docs.ray.io](https://img.shields.io/badge/docs-ray.io-blue)](https://docs.ray.io/en/master/lightgbm-ray.html)
-
-LightGBM-Ray is a distributed backend for 
+<!--$END_REMOVE-->
+LightGBM-Ray is a distributed backend for
 [LightGBM](https://lightgbm.readthedocs.io/), built
-on top of 
+on top of
 [distributed computing framework Ray](https://ray.io).
 
 LightGBM-Ray
-- enables [**multi-node**](#usage) and [**multi-GPU**](#multi-gpu-training) training
-- integrates seamlessly with distributed [**hyperparameter optimization**](#hyperparameter-tuning) library [Ray Tune](http://tune.io)
-- comes with [**fault tolerance handling**](#fault-tolerance) mechanisms, and
-- supports [**distributed dataframes** and **distributed data loading**](#distributed-data-loading)
+
+- enables [multi-node](#usage) and [multi-GPU](#multi-gpu-training) training
+- integrates seamlessly with distributed [hyperparameter optimization](#hyperparameter-tuning) library [Ray Tune](http://tune.io)
+- comes with [fault tolerance handling](#fault-tolerance) mechanisms, and
+- supports [distributed dataframes and distributed data loading](#distributed-data-loading)
 
 All releases are tested on large clusters and workloads.
 
 This package is based on [XGBoost-Ray](https://github.com/ray-project/xgboost_ray). As of now, XGBoost-Ray is a dependency for LightGBM-Ray.
 
+## Installation
 
-Installation
-------------
 You can install the latest LightGBM-Ray release from PIP:
 
 ```bash
-pip install lightgbm_ray
+pip install "lightgbm_ray"
 ```
 
 If you'd like to install the latest master, use this command instead:
 
 ```bash
-pip install git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray
+pip install "git+https://github.com/ray-project/lightgbm_ray.git#egg=lightgbm_ray"
 ```
 
+## Usage
 
-Usage
------
 LightGBM-Ray provides a drop-in replacement for LightGBM's `train`
 function. To pass data, a `RayDMatrix` object is required, common
 with XGBoost-Ray. You can also use a scikit-learn
@@ -168,8 +169,7 @@ this library is only fully tested and supported for LightGBM >= 3.2.1.
 
 For more information on the scikit-learn API, refer to the [LightGBM documentation](https://lightgbm.readthedocs.io/en/latest/Python-API.html#scikit-learn-api).
 
-Data loading
-------------
+## Data loading
 
 Data is passed to LightGBM-Ray via a `RayDMatrix` object.
 
@@ -206,10 +206,11 @@ dtrain = RayDMatrix(
     filetype=RayFileType.PARQUET)
 ```
 
-Hyperparameter Tuning
----------------------
+<!--$UNCOMMENT(lightgbm-ray-tuning)=-->
 
-LightGBM-Ray integrates with [Ray Tune](https://tune.io) to provide distributed hyperparameter tuning for your
+## Hyperparameter Tuning
+
+LightGBM-Ray integrates with  <!--$UNCOMMENT{ref}`Ray Tune <tune-main>`--><!--$REMOVE-->[Ray Tune](https://tune.io)<!--$END_REMOVE--> to provide distributed hyperparameter tuning for your
 distributed LightGBM models. You can run multiple LightGBM-Ray training runs in parallel, each with a different
 hyperparameter configuration, and each training run parallelized by itself. All you have to do is move your training
 code to a function, and pass the function to `tune.run`. Internally, `train` will detect if `tune` is being used and will
@@ -266,8 +267,8 @@ print("Best hyperparameters", analysis.best_config)
 
 Also see examples/simple_tune.py for another example.
 
-Fault tolerance
----------------
+## Fault tolerance
+
 LightGBM-Ray leverages the stateful Ray actor model to
 enable fault tolerant training. Currently, only non-elastic
 training is supported.
@@ -291,8 +292,21 @@ ray_params = RayParams(
 )
 ```
 
-Resources
----------
+## Resources
+
+By default, LightGBM-Ray tries to determine the number of CPUs
+available and distributes them evenly across actors.
+
+In the case of very large clusters or clusters with many different
+machine sizes, it makes sense to limit the number of CPUs per actor
+by setting the `cpus_per_actor` argument. Consider always
+setting this explicitly.
+
+The number of LightGBM actors always has to be set manually with
+the `num_actors` argument.
+
+### Multi GPU training
+
 By default, LightGBM-Ray tries to determine the number of CPUs
 available and distributes them evenly across actors.
 
@@ -358,8 +372,8 @@ more than one actor per node:
   you should set the number of actors to 6 and the CPUs per 
   actor to 4.
 
-Distributed data loading
-------------------------
+## Distributed data loading
+
 LightGBM-Ray can leverage both centralized and distributed data loading.
 
 In **centralized data loading**, the data is partitioned by the head node
@@ -401,10 +415,10 @@ ray_params = RayDMatrix([
 ```
 
 Lastly, LightGBM-Ray supports **distributed dataframe** representations, such
-as [Ray Datasets](https://docs.ray.io/en/latest/data/dataset.html),
-[Modin](https://modin.readthedocs.io/en/latest/) and 
+as <!--$UNCOMMENT{ref}`Ray Datasets <datasets>`--><!--$REMOVE-->[Ray Datasets](https://docs.ray.io/en/latest/data/dataset.html)<!--$END_REMOVE-->,
+[Modin](https://modin.readthedocs.io/en/latest/) and
 [Dask dataframes](https://docs.dask.org/en/latest/dataframe.html)
-(used with [Dask on Ray](https://docs.ray.io/en/master/dask-on-ray.html)). 
+(used with <!--$UNCOMMENT{ref}`Dask on Ray <dask-on-ray>`--><!--$REMOVE-->[Dask on Ray](https://docs.ray.io/en/master/dask-on-ray.html)<!--$END_REMOVE-->).
 Here, LightGBM-Ray will check on which nodes the distributed partitions 
 are currently located, and will assign partitions to actors in order to
 minimize cross-node data transfer. Please note that we also assume here
@@ -423,6 +437,46 @@ ray_params = RayDMatrix(existing_modin_df)
 
 The following data sources can be used with a `RayDMatrix` object.
 
+<!--$UNCOMMENT```{eval-rst}
+.. list-table::
+   :header-rows: 1
+
+   * - Type
+     - Centralized loading
+     - Distributed loading
+   * - Numpy array
+     - Yes
+     - No
+   * - Pandas dataframe
+     - Yes
+     - No
+   * - Single CSV
+     - Yes
+     - No
+   * - Multi CSV
+     - Yes
+     - Yes
+   * - Single Parquet
+     - Yes
+     - No
+   * - Multi Parquet
+     - Yes
+     - Yes
+   * - :ref:`Ray Dataset <datasets>`
+     - Yes
+     - Yes
+   * - `Petastorm <https://github.com/uber/petastorm>`_
+     - Yes
+     - Yes
+   * - `Dask dataframe <https://docs.dask.org/en/latest/dataframe.html>`_
+     - Yes
+     - Yes
+   * - `Modin dataframe <https://modin.readthedocs.io/en/latest/>`_
+     - Yes
+     - Yes
+
+```-->
+<!--$REMOVE-->
 | Type                                                             | Centralized loading | Distributed loading |
 |------------------------------------------------------------------|---------------------|---------------------|
 | Numpy array                                                      | Yes                 | No                  |
@@ -435,9 +489,10 @@ The following data sources can be used with a `RayDMatrix` object.
 | [Petastorm](https://github.com/uber/petastorm)                   | Yes                 | Yes                 |
 | [Dask dataframe](https://docs.dask.org/en/latest/dataframe.html) | Yes                 | Yes                 |
 | [Modin dataframe](https://modin.readthedocs.io/en/latest/)       | Yes                 | Yes                 |
+<!--$END_REMOVE-->
 
-Memory usage
--------------
+## Memory usage
+
 Details coming soon.
 <!-- This hasn't been verifiec -->
 <!-- 
@@ -490,8 +545,8 @@ suggestions:
   floating point values will be loaded as `np.float64` 
   per default, increasing peak memory usage by 33%.
 
-Placement Strategies
---------------------
+## Placement Strategies
+
 LightGBM-Ray leverages Ray's Placement Group API (https://docs.ray.io/en/master/placement-group.html)
 to implement placement strategies for better fault tolerance. 
 
@@ -513,8 +568,7 @@ to become available, and will fail if the required resources cannot be reserved 
 to increase the number of resources. You can change the `RXGB_PLACEMENT_GROUP_TIMEOUT_S` environment variable to modify 
 how long this timeout should be. 
 
-More examples
--------------
+## More examples
 
 For complete end to end examples, please have a look at
 the [examples folder](lightgbm_ray/examples/):
@@ -523,11 +577,51 @@ the [examples folder](lightgbm_ray/examples/):
 * [HIGGS classification example](lightgbm_ray/examples/higgs.py) 
 ([download dataset (2.6 GB)](https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz))
 * [HIGGS classification example with Parquet](lightgbm_ray/examples/higgs_parquet.py) (uses the same dataset) 
-* [Test data classification](lightgbm_ray/examples/train_on_test_data.py) (uses a self-generated dataset) 
+* [Test data classification](lightgbm_ray/examples/train_on_test_data.py) (uses a self-generated dataset)
+<!--$REMOVE-->
+## Resources
 
-
-Resources
----------
 * [LightGBM-Ray documentation](https://docs.ray.io/en/master/lightgbm-ray.html)
 * [Ray community slack](https://forms.gle/9TSdDYUgxYs8SA9e8)
+<!--$END_REMOVE-->
+<!--$UNCOMMENT## API reference
 
+```{eval-rst}
+.. autoclass:: lightgbm_ray.RayParams
+    :members:
+```
+
+```{eval-rst}
+.. autoclass:: lightgbm_ray.RayDMatrix
+    :members:
+```
+
+```{eval-rst}
+.. autofunction:: lightgbm_ray.train
+```
+
+```{eval-rst}
+.. autofunction:: lightgbm_ray.predict
+```
+
+### scikit-learn API
+
+```{eval-rst}
+.. autoclass:: lightgbm_ray.RayXGBClassifier
+    :members:
+```
+
+```{eval-rst}
+.. autoclass:: lightgbm_ray.RayXGBRegressor
+    :members:
+```
+
+```{eval-rst}
+.. autoclass:: lightgbm_ray.RayXGBRFClassifier
+    :members:
+```
+
+```{eval-rst}
+.. autoclass:: lightgbm_ray.RayXGBRFRegressor
+    :members:
+```-->
