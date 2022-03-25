@@ -592,8 +592,12 @@ the [examples folder](lightgbm_ray/examples/):
 ```
 
 ```{eval-rst}
-.. autoclass:: lightgbm_ray.RayDMatrix
+.. note::
+  The ``xgboost_ray.RayDMatrix`` class is shared with :ref:`XGBoost-Ray <xgboost-ray>`.
+
+.. autoclass:: xgboost_ray.RayDMatrix
     :members:
+    :noindex:
 ```
 
 ```{eval-rst}
@@ -607,21 +611,11 @@ the [examples folder](lightgbm_ray/examples/):
 ### scikit-learn API
 
 ```{eval-rst}
-.. autoclass:: lightgbm_ray.RayXGBClassifier
+.. autoclass:: lightgbm_ray.RayLGBMClassifier
     :members:
 ```
 
 ```{eval-rst}
-.. autoclass:: lightgbm_ray.RayXGBRegressor
+.. autoclass:: lightgbm_ray.RayLGBMRegressor
     :members:
 ```
-
-```{eval-rst}
-.. autoclass:: lightgbm_ray.RayXGBRFClassifier
-    :members:
-```
-
-```{eval-rst}
-.. autoclass:: lightgbm_ray.RayXGBRFRegressor
-    :members:
-```-->
