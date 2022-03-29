@@ -19,7 +19,7 @@ LightGBM-Ray
 
 All releases are tested on large clusters and workloads.
 
-This package is based on [XGBoost-Ray](https://github.com/ray-project/xgboost_ray). As of now, XGBoost-Ray is a dependency for LightGBM-Ray.
+This package is based on <!--$UNCOMMENT{ref}`XGBoost-Ray <xgboost-ray>`--><!--$REMOVE-->[XGBoost-Ray](https://github.com/ray-project/xgboost_ray)<!--$END_REMOVE-->. As of now, XGBoost-Ray is a dependency for LightGBM-Ray.
 
 ## Installation
 
