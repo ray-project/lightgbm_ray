@@ -618,4 +618,4 @@ the [examples folder](lightgbm_ray/examples/):
 ```{eval-rst}
 .. autoclass:: lightgbm_ray.RayLGBMRegressor
     :members:
-```
+```-->
