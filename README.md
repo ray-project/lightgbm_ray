@@ -530,13 +530,13 @@ how long this timeout should be.
 ## More examples
 
 For complete end to end examples, please have a look at
-the [examples folder](https://github.com/ray-project/lightgbm_ray/examples/):
+the [examples folder](https://github.com/ray-project/lightgbm_ray/tree/main/lightgbm_ray/examples/):
 
-* [Simple sklearn breastcancer dataset example](https://github.com/ray-project/lightgbm_ray/examples/simple.py) (requires `sklearn`)
-* [HIGGS classification example](https://github.com/ray-project/lightgbm_ray/examples/higgs.py) 
+* [Simple sklearn breastcancer dataset example](https://github.com/ray-project/lightgbm_ray/tree/main/lightgbm_ray/examples/simple.py) (requires `sklearn`)
+* [HIGGS classification example](https://github.com/ray-project/lightgbm_ray/tree/main/lightgbm_ray/examples/higgs.py) 
 ([download dataset (2.6 GB)](https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz))
-* [HIGGS classification example with Parquet](https://github.com/ray-project/lightgbm_ray/examples/higgs_parquet.py) (uses the same dataset) 
-* [Test data classification](https://github.com/ray-project/lightgbm_ray/examples/train_on_test_data.py) (uses a self-generated dataset)
+* [HIGGS classification example with Parquet](https://github.com/ray-project/lightgbm_ray/tree/main/lightgbm_ray/examples/higgs_parquet.py) (uses the same dataset) 
+* [Test data classification](https://github.com/ray-project/lightgbm_ray/tree/main/lightgbm_ray/examples/train_on_test_data.py) (uses a self-generated dataset)
 <!--$REMOVE-->
 ## Resources
 
