@@ -15,6 +15,10 @@ from xgboost_ray.util import force_on_current_node
 try:
     from ray import tune
     from ray.tune import is_session_enabled
+    from ray.tune.integration.lightgbm import (
+        TuneReportCallback as OrigTuneReportCallback, _TuneCheckpointCallback
+        as _OrigTuneCheckpointCallback, TuneReportCheckpointCallback as
+        OrigTuneReportCheckpointCallback)
 
     TUNE_INSTALLED = True
 except ImportError:
@@ -25,65 +29,58 @@ except ImportError:
 
     TUNE_INSTALLED = False
 
-from ray.tune.integration.lightgbm import (
-    TuneReportCallback as OrigTuneReportCallback, _TuneCheckpointCallback as
-    _OrigTuneCheckpointCallback, TuneReportCheckpointCallback as
-    OrigTuneReportCheckpointCallback)
+if TUNE_INSTALLED:
 
+    class _TuneLGBMRank0Mixin:
+        """Mixin to allow for dynamic setting of rank so that only
+        one actor actually fires the callback"""
 
-class _TuneLGBMRank0Mixin:
-    """Mixin to allow for dynamic setting of rank so that only
-    one actor actually fires the callback"""
+        @property
+        def is_rank_0(self) -> bool:
+            try:
+                return self._is_rank_0
+            except AttributeError:
+                return True
 
-    @property
-    def is_rank_0(self) -> bool:
-        try:
-            return self._is_rank_0
-        except AttributeError:
-            return True
+        @is_rank_0.setter
+        def is_rank_0(self, val: bool):
+            self._is_rank_0 = val
 
-    @is_rank_0.setter
-    def is_rank_0(self, val: bool):
-        self._is_rank_0 = val
+    class TuneReportCallback(_TuneLGBMRank0Mixin, OrigTuneReportCallback):
+        def __call__(self, env: CallbackEnv) -> None:
+            if not self.is_rank_0:
+                return
+            eval_result = self._get_eval_result(env)
+            report_dict = self._get_report_dict(eval_result)
+            put_queue(lambda: tune.report(**report_dict))
 
+    class _TuneCheckpointCallback(_TuneLGBMRank0Mixin,
+                                  _OrigTuneCheckpointCallback):
+        def __call__(self, env: CallbackEnv) -> None:
+            if not self.is_rank_0:
+                return
+            put_queue(lambda: self._create_checkpoint(
+                env.model, env.iteration, self._filename, self._frequency))
 
-class TuneReportCallback(_TuneLGBMRank0Mixin, OrigTuneReportCallback):
-    def __call__(self, env: CallbackEnv) -> None:
-        if not self.is_rank_0:
-            return
-        eval_result = self._get_eval_result(env)
-        report_dict = self._get_report_dict(eval_result)
-        put_queue(lambda: tune.report(**report_dict))
+    class TuneReportCheckpointCallback(_TuneLGBMRank0Mixin,
+                                       OrigTuneReportCheckpointCallback):
+        _checkpoint_callback_cls = _TuneCheckpointCallback
+        _report_callback_cls = TuneReportCallback
 
+        @property
+        def is_rank_0(self) -> bool:
+            try:
+                return self._is_rank_0
+            except AttributeError:
+                return False
 
-class _TuneCheckpointCallback(_TuneLGBMRank0Mixin,
-                              _OrigTuneCheckpointCallback):
-    def __call__(self, env: CallbackEnv) -> None:
-        if not self.is_rank_0:
-            return
-        put_queue(lambda: self._create_checkpoint(
-            env.model, env.iteration, self._filename, self._frequency))
-
-
-class TuneReportCheckpointCallback(_TuneLGBMRank0Mixin,
-                                   OrigTuneReportCheckpointCallback):
-    _checkpoint_callback_cls = _TuneCheckpointCallback
-    _report_callback_cls = TuneReportCallback
-
-    @property
-    def is_rank_0(self) -> bool:
-        try:
-            return self._is_rank_0
-        except AttributeError:
-            return False
-
-    @is_rank_0.setter
-    def is_rank_0(self, val: bool):
-        self._is_rank_0 = val
-        if hasattr(self, "_checkpoint"):
-            self._checkpoint.is_rank_0 = val
-        if hasattr(self, "_report"):
-            self._report.is_rank_0 = val
+        @is_rank_0.setter
+        def is_rank_0(self, val: bool):
+            self._is_rank_0 = val
+            if hasattr(self, "_checkpoint"):
+                self._checkpoint.is_rank_0 = val
+            if hasattr(self, "_report"):
+                self._report.is_rank_0 = val
 
 
 def _try_add_tune_callback(kwargs: Dict):
