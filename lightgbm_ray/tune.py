@@ -29,22 +29,24 @@ except ImportError:
 
     TUNE_INSTALLED = False
 
+
+class _TuneLGBMRank0Mixin:
+    """Mixin to allow for dynamic setting of rank so that only
+    one actor actually fires the callback"""
+
+    @property
+    def is_rank_0(self) -> bool:
+        try:
+            return self._is_rank_0
+        except AttributeError:
+            return True
+
+    @is_rank_0.setter
+    def is_rank_0(self, val: bool):
+        self._is_rank_0 = val
+
+
 if TUNE_INSTALLED:
-
-    class _TuneLGBMRank0Mixin:
-        """Mixin to allow for dynamic setting of rank so that only
-        one actor actually fires the callback"""
-
-        @property
-        def is_rank_0(self) -> bool:
-            try:
-                return self._is_rank_0
-            except AttributeError:
-                return True
-
-        @is_rank_0.setter
-        def is_rank_0(self, val: bool):
-            self._is_rank_0 = val
 
     class TuneReportCallback(_TuneLGBMRank0Mixin, OrigTuneReportCallback):
         def __call__(self, env: CallbackEnv) -> None:
