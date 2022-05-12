@@ -57,7 +57,7 @@ from xgboost_ray.main import (
     ENV, RayActorError, pickle, _PrepareActorTask, RayParams as RayXGBParams,
     _TrainingState, _is_client_connected, is_session_enabled,
     force_on_current_node, _assert_ray_support, _maybe_print_legacy_warning,
-    _Checkpoint, _create_communication_processes, TUNE_USING_PG, RayTaskError,
+    _Checkpoint, _create_communication_processes, RayTaskError,
     RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group,
     _shutdown, PlacementGroup, ActorHandle, combine_data, _trigger_data_load,
     DEFAULT_PG, _autodetect_resources as _autodetect_resources_base)
@@ -1202,12 +1202,9 @@ def train(
     placement_strategy = None
     if not ray_params.elastic_training:
         if added_tune_callback:
-            if TUNE_USING_PG:
-                # If Tune is using placement groups, then strategy has already
-                # been set. Don't create an additional placement_group here.
-                placement_strategy = None
-            else:
-                placement_strategy = "PACK"
+            # If Tune is using placement groups, then strategy has already
+            # been set. Don't create an additional placement_group here.
+            placement_strategy = None
         elif ENV.USE_SPREAD_STRATEGY:
             placement_strategy = "SPREAD"
 
