@@ -66,6 +66,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
         shutil.rmtree(self.experiment_dir)
 
     # noinspection PyTypeChecker
+    @patch.dict(os.environ, {"TUNE_RESULT_DELIM": "/"})
     def testNumIters(self, init=True):
         """Test that the number of reported tune results is correct"""
         if init:
@@ -79,9 +80,10 @@ class LightGBMRayTuneTest(unittest.TestCase):
             resources_per_trial=ray_params.get_tune_resources(),
             num_samples=1)
 
+        print(analysis.results_df.columns)
         self.assertSequenceEqual(
             list(analysis.results_df["training_iteration"]),
-            list(analysis.results_df["config.num_boost_round"]))
+            list(analysis.results_df["config/num_boost_round"]))
 
     def testNumItersClient(self):
         """Test ray client mode"""
