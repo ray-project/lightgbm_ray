@@ -50,6 +50,7 @@ from lightgbm.callback import CallbackEnv, record_evaluation
 
 import ray
 from ray.util.annotations import PublicAPI
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from xgboost_ray.main import (
     _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix,
@@ -60,7 +61,8 @@ from xgboost_ray.main import (
     _Checkpoint, _create_communication_processes, RayTaskError,
     RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group,
     _shutdown, PlacementGroup, ActorHandle, combine_data, _trigger_data_load,
-    DEFAULT_PG, _autodetect_resources as _autodetect_resources_base)
+    DEFAULT_PG, _autodetect_resources as _autodetect_resources_base,
+    _ray_get_actor_cpus)
 from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
@@ -329,9 +331,8 @@ class RayLightGBMActor(RayXGBoostActor):
         local_params = _choose_param_value(
             main_param_name="num_threads",
             params=params,
-            default_value=num_threads if num_threads > 0 else
-            sum(num
-                for _, num in ray.worker.get_resource_ids().get("CPU", [])))
+            default_value=num_threads
+            if num_threads > 0 else _ray_get_actor_cpus())
 
         if "init_model" in kwargs:
             if isinstance(kwargs["init_model"], bytes):
@@ -541,8 +542,10 @@ def _create_actor(
         num_cpus=num_cpus_per_actor,
         num_gpus=num_gpus_per_actor,
         resources=resources_per_actor,
-        placement_group_capture_child_tasks=True,
-        placement_group=placement_group or DEFAULT_PG).remote(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group or DEFAULT_PG,
+            placement_group_capture_child_tasks=True,
+        )).remote(
             rank=rank,
             num_actors=num_actors,
             model_factory=model_factory,
@@ -734,7 +737,8 @@ def _train(params: Dict,
     # confilict, it can try and choose a new one. Most of the times
     # it will complete in one iteration
     machines = None
-    for n in range(5):
+    attempts = 5
+    for _ in range(attempts):
         addresses = ray.get(
             [actor.find_free_address.remote() for actor in live_actors])
         if addresses:
@@ -750,7 +754,7 @@ def _train(params: Dict,
             else:
                 logger.debug("Couldn't obtain unique addresses, trying again.")
     if machines:
-        logger.debug(f"Obtained unique addresses in {n} attempts.")
+        logger.debug(f"Obtained unique addresses in {attempts} attempts.")
     else:
         raise ValueError(
             f"Couldn't obtain enough unique addresses for {len(live_actors)}."
