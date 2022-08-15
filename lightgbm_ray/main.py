@@ -538,21 +538,23 @@ def _create_actor(
     # Send DEFAULT_PG here, which changed in Ray > 1.4.0
     # If we send `None`, this will ignore the parent placement group and
     # lead to errors e.g. when used within Ray Tune
-    return _RemoteRayLightGBMActor.options(
+    actor_cls = _RemoteRayLightGBMActor.options(
         num_cpus=num_cpus_per_actor,
         num_gpus=num_gpus_per_actor,
         resources=resources_per_actor,
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             placement_group=placement_group or DEFAULT_PG,
             placement_group_capture_child_tasks=True,
-        )).remote(
-            rank=rank,
-            num_actors=num_actors,
-            model_factory=model_factory,
-            queue=queue,
-            checkpoint_frequency=checkpoint_frequency,
-            distributed_callbacks=distributed_callbacks,
-            network_params={"local_listen_port": port} if port else None)
+        ))
+
+    return actor_cls.remote(
+        rank=rank,
+        num_actors=num_actors,
+        model_factory=model_factory,
+        queue=queue,
+        checkpoint_frequency=checkpoint_frequency,
+        distributed_callbacks=distributed_callbacks,
+        network_params={"local_listen_port": port} if port else None)
 
 
 def _train(params: Dict,
@@ -737,8 +739,9 @@ def _train(params: Dict,
     # confilict, it can try and choose a new one. Most of the times
     # it will complete in one iteration
     machines = None
-    attempts = 5
-    for _ in range(attempts):
+    max_attempts = 5
+    i = 0
+    for i in range(max_attempts):
         addresses = ray.get(
             [actor.find_free_address.remote() for actor in live_actors])
         if addresses:
@@ -754,7 +757,7 @@ def _train(params: Dict,
             else:
                 logger.debug("Couldn't obtain unique addresses, trying again.")
     if machines:
-        logger.debug(f"Obtained unique addresses in {attempts} attempts.")
+        logger.debug(f"Obtained unique addresses in {i} attempts.")
     else:
         raise ValueError(
             f"Couldn't obtain enough unique addresses for {len(live_actors)}."

@@ -20,6 +20,13 @@ from lightgbm_ray import RayDMatrix, train, RayParams, RayShardingMode
 from lightgbm_ray.tune import TuneReportCallback,\
     TuneReportCheckpointCallback, _try_add_tune_callback
 
+try:
+    from ray.air import Checkpoint
+except Exception:
+
+    class Checkpoint:
+        pass
+
 
 class LightGBMRayTuneTest(unittest.TestCase):
     def setUp(self):
@@ -145,7 +152,10 @@ class LightGBMRayTuneTest(unittest.TestCase):
             log_to_file=True,
             local_dir=self.experiment_dir)
 
-        self.assertTrue(os.path.exists(analysis.best_checkpoint))
+        if isinstance(analysis.best_checkpoint, Checkpoint):
+            self.assertTrue(analysis.best_checkpoint)
+        else:
+            self.assertTrue(os.path.exists(analysis.best_checkpoint))
 
     @unittest.skipIf(OrigTuneReportCallback is None,
                      "integration.lightgbmnot yet in ray.tune")
@@ -163,7 +173,10 @@ class LightGBMRayTuneTest(unittest.TestCase):
             log_to_file=True,
             local_dir=self.experiment_dir)
 
-        self.assertTrue(os.path.exists(analysis.best_checkpoint))
+        if isinstance(analysis.best_checkpoint, Checkpoint):
+            self.assertTrue(analysis.best_checkpoint)
+        else:
+            self.assertTrue(os.path.exists(analysis.best_checkpoint))
 
 
 if __name__ == "__main__":
