@@ -164,7 +164,8 @@ class LightGBMRayTuneTest(unittest.TestCase):
         ray_params = RayParams(cpus_per_actor=2, num_actors=1)
         analysis = tune.run(
             self.train_func(
-                ray_params, callbacks=[OrigTuneReportCheckpointCallback()]),
+                ray_params,
+                callbacks=[OrigTuneReportCheckpointCallback(frequency=1)]),
             config=self.params,
             resources_per_trial=ray_params.get_tune_resources(),
             num_samples=1,
