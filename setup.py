@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 setup(
     name="lightgbm_ray",
     packages=find_packages(where=".", include="lightgbm_ray*"),
-    version="0.1.5",
+    version="0.1.6",
     author="Ray Team",
     description="A Ray backend for distributed LightGBM",
     long_description="A distributed backend for LightGBM built on top of "
