@@ -31,7 +31,7 @@ from typing import (Tuple, Dict, Any, List, Optional, Type, Union, Sequence,
                     Callable)
 from copy import deepcopy
 from dataclasses import dataclass
-from distutils.version import LooseVersion
+from packaging.version import Version
 
 import time
 import logging
@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 ELASTIC_RESTART_DISABLED = True
-LIGHTGBM_VERSION = LooseVersion(lightgbm.__version__)
+LIGHTGBM_VERSION = Version(lightgbm.__version__)
 
 
 class StopException(Exception):
@@ -377,7 +377,7 @@ class RayLightGBMActor(RayXGBoostActor):
                 callback.is_rank_0 = return_bst
         kwargs["callbacks"] = callbacks
 
-        if LIGHTGBM_VERSION < LooseVersion("3.3.0"):
+        if LIGHTGBM_VERSION < Version("3.3.0"):
             # In lightgbm<3.3.0, verbosity doesn't always work as a parameter
             # but passing it as kwarg to fit does
             local_params = _choose_param_value(
