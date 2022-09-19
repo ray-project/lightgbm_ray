@@ -6,6 +6,7 @@ setup(
     version="0.1.6",
     author="Ray Team",
     description="A Ray backend for distributed LightGBM",
+    license="Apache 2.0",
     long_description="A distributed backend for LightGBM built on top of "
     "distributed computing framework Ray.",
     url="https://github.com/ray-project/lightgbm_ray",
