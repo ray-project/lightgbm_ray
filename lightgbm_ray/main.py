@@ -62,7 +62,7 @@ from xgboost_ray.main import (
     RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group,
     _shutdown, PlacementGroup, ActorHandle, combine_data, _trigger_data_load,
     DEFAULT_PG, _autodetect_resources as _autodetect_resources_base,
-    _ray_get_actor_cpus)
+    _ray_get_actor_cpus, get_current_placement_group)
 from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
 
@@ -1099,7 +1099,7 @@ def train(
     params = _choose_param_value(
         main_param_name="device_type", params=params, default_value="cpu")
 
-    if added_tune_callback:
+    if added_tune_callback or get_current_placement_group():
         # Don't autodetect resources when used with Tune.
         cpus_per_actor = ray_params.cpus_per_actor
         gpus_per_actor = max(0, ray_params.gpus_per_actor)
@@ -1208,7 +1208,7 @@ def train(
 
     placement_strategy = None
     if not ray_params.elastic_training:
-        if added_tune_callback:
+        if added_tune_callback or get_current_placement_group():
             # If Tune is using placement groups, then strategy has already
             # been set. Don't create an additional placement_group here.
             placement_strategy = None
