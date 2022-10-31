@@ -5,7 +5,7 @@ yapf==0.23.0
 petastorm
 pytest
 pyarrow
-ray[tune]
+ray[tune, data]
 scikit-learn
 modin
 git+https://github.com/ray-project/xgboost_ray.git
@@ -13,4 +13,5 @@ parameterized
 packaging
 
 # workaround for now
+protobuf<4.0.0
 tensorboardX==2.2
