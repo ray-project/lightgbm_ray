@@ -1122,8 +1122,15 @@ def train(
             " which is not allowed. Using 'data' as default")
         params["tree_learner"] = "data"
 
+    for param_alias in _ConfigAliases.get("num_iterations"):
+        if param_alias in params:
+            raise ValueError(
+                f"Do not pass {param_alias} as a parameter. Instead, "
+                "set the `num_boost_round` argument to control "
+                "the number of iterations/trees.")
+
     for param_alias in _ConfigAliases.get("num_machines", "num_threads",
-                                          "num_iterations", "n_estimators"):
+                                          "n_estimators"):
         if param_alias in params:
             warnings.warn(f"Parameter {param_alias} will be ignored.")
             params.pop(param_alias)

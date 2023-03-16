@@ -5,6 +5,7 @@ import unittest
 import numpy as np
 
 import lightgbm
+from lightgbm.basic import _ConfigAliases
 from lightgbm.callback import CallbackEnv
 
 import ray
@@ -65,6 +66,21 @@ class LightGBMAPITest(unittest.TestCase):
 
     def _init_ray(self):
         ray.init(num_cpus=4, num_gpus=0)
+
+    def testNumBoostRoundsValidation(self):
+        """Ensure that an exception is thrown if num_iterations is passed
+        as a parameter."""
+        self._init_ray()
+
+        for param_alias in _ConfigAliases.get("num_iterations"):
+            with self.assertRaisesRegex(ValueError, "num_boost_round"):
+                params = self.params.copy()
+                params[param_alias] = 10
+                train(
+                    params,
+                    RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH),
+                    ray_params=RayParams(num_actors=2),
+                    **self.kwargs)
 
     def testCustomObjectiveFunction(self):
         """Ensure that custom objective functions work.
