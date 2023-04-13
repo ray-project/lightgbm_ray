@@ -19,7 +19,6 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install codecov
         python -m pip install -U yapf==0.23.0 flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
     - name: Print environment info
       run: |
@@ -50,7 +49,6 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install codecov
         python -m pip install -U ${{ matrix.ray-wheel }}
         if [ -f requirements-test.txt ]; then python -m pip install -r requirements-test.txt; fi
     - name: Install package
@@ -87,7 +85,6 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install codecov
         python -m pip install -U ray
         if [ -f requirements-test.txt ]; then python -m pip install  -r requirements-test.txt; fi
     - name: Install package
@@ -126,7 +123,6 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install codecov
         python -m pip install -U ray
         if [ -f requirements-test.txt ]; then python -m pip install -r requirements-test.txt; fi
     - name: Uninstall unavailable dependencies
@@ -176,7 +172,6 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install codecov
         python -m pip install -U ${{ matrix.ray-wheel }}
         if [ -f requirements-test.txt ]; then python -m pip install -r requirements-test.txt; fi
     - name: Install Ubuntu system dependencies
