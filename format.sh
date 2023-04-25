@@ -228,7 +228,7 @@ format_changed() {
     #
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
-    MERGEBASE="$(git merge-base upstream/master HEAD)"
+    MERGEBASE="$(git merge-base upstream/main HEAD)"
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
@@ -290,8 +290,8 @@ else
         git remote add 'upstream' 'https://github.com/ray-project/lightgbm_ray.git'
     fi
 
-    # Only fetch master since that's the branch we're diffing against.
-    git fetch upstream master || true
+    # Only fetch main since that's the branch we're diffing against.
+    git fetch upstream main || true
 
     # Format only the files that changed in last commit.
     format_changed
