@@ -1,18 +1,19 @@
 import os
 
+import lightgbm as lgbm
+import numpy as np
 from sklearn import datasets
 
-import lightgbm as lgbm
-from lightgbm_ray import RayDMatrix, predict, RayParams
-
-import numpy as np
+from lightgbm_ray import RayDMatrix, RayParams, predict
 
 
 def main():
     if not os.path.exists("simple.lgbm"):
-        raise ValueError("Model file not found: `simple.lgbm`"
-                         "\nFIX THIS by running `python `simple.py` first to "
-                         "train the model.")
+        raise ValueError(
+            "Model file not found: `simple.lgbm`"
+            "\nFIX THIS by running `python `simple.py` first to "
+            "train the model."
+        )
 
     # Load dataset
     data, labels = datasets.load_breast_cancer(return_X_y=True)

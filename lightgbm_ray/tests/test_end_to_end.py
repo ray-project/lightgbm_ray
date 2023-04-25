@@ -1,20 +1,17 @@
+import logging
 import os
 import shutil
 import tempfile
-
-import numpy as np
 import unittest
 
-import logging
-
 import lightgbm as lgbm
-
+import numpy as np
 import ray
 from ray.exceptions import RayActorError, RayTaskError
-
-from lightgbm_ray import RayParams, train, RayDMatrix, predict, RayShardingMode
-from lightgbm_ray.main import RayXGBoostTrainingError
 from xgboost_ray.callback import DistributedCallback
+
+from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode, predict, train
+from lightgbm_ray.main import RayXGBoostTrainingError
 
 # from sklearn.utils import shuffle
 
@@ -75,12 +72,15 @@ class LGBMRayEndToEndTest(unittest.TestCase):
 
     def setUp(self):
         repeat = 64  # Repeat data a couple of times for stability
-        self.x = np.array([
-            [1, 0, 0, 0],  # Feature 0 -> Label 0
-            [0, 1, 0, 0],  # Feature 1 -> Label 1
-            [0, 0, 1, 1],  # Feature 2+3 -> Label 2
-            [0, 0, 1, 0],  # Feature 2+!3 -> Label 3
-        ] * repeat)
+        self.x = np.array(
+            [
+                [1, 0, 0, 0],  # Feature 0 -> Label 0
+                [0, 1, 0, 0],  # Feature 1 -> Label 1
+                [0, 0, 1, 1],  # Feature 2+3 -> Label 2
+                [0, 0, 1, 0],  # Feature 2+!3 -> Label 3
+            ]
+            * repeat
+        )
         self.y = np.array([0, 1, 2, 3] * repeat)
 
         # self.x, self.y = shuffle(self.x, self.y, random_state=1)
@@ -146,7 +146,8 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             self.params,
             RayDMatrix(self.x, self.y, sharding=RayShardingMode.BATCH),
             num_boost_round=50,
-            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor))
+            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor),
+        )
 
         self.assertEqual(bst.booster_.current_iteration(), 50)
 
@@ -157,14 +158,16 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         pred_y = predict(
             bst,
             RayDMatrix(self.x),
-            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor))
+            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor),
+        )
         pred_y = np.argmax(pred_y, axis=1)
         self.assertSequenceEqual(list(self.y), list(pred_y))
 
         pred_y = predict(
             bst.booster_,
             RayDMatrix(self.x),
-            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor))
+            ray_params=RayParams(num_actors=2, cpus_per_actor=cpus_per_actor),
+        )
         pred_y = np.argmax(pred_y, axis=1)
         self.assertSequenceEqual(list(self.y), list(pred_y))
 
@@ -180,27 +183,28 @@ class LGBMRayEndToEndTest(unittest.TestCase):
 
     def testCpusPerActorEqualTo1RaisesException(self):
         ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
-        with self.assertRaisesRegex(ValueError,
-                                    "cpus_per_actor is set to less than 2"):
+        with self.assertRaisesRegex(ValueError, "cpus_per_actor is set to less than 2"):
             train(
                 self.params,
                 RayDMatrix(self.x, self.y),
                 num_boost_round=50,
-                ray_params=RayParams(num_actors=2, cpus_per_actor=1))
+                ray_params=RayParams(num_actors=2, cpus_per_actor=1),
+            )
 
     def testBothEvalsAndValidSetsRaisesException(self):
         ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
         with self.assertRaisesRegex(
-                ValueError,
-                "Specifying both `evals` and `valid_sets` is ambiguous"):
-            data = RayDMatrix(self.x, self.y),
+            ValueError, "Specifying both `evals` and `valid_sets` is ambiguous"
+        ):
+            data = (RayDMatrix(self.x, self.y),)
             train(
                 self.params,
                 data,
                 num_boost_round=50,
                 ray_params=RayParams(num_actors=2),
                 evals=[(data, "eval")],
-                valid_sets=[data])
+                valid_sets=[data],
+            )
 
     def testTrainPredict(self, init=True, remote=None, **ray_param_dict):
         """Train with evaluation and predict"""
@@ -220,10 +224,12 @@ class LGBMRayEndToEndTest(unittest.TestCase):
                 num_actors=2,
                 cpus_per_actor=1,
                 allow_less_than_two_cpus=True,
-                **ray_param_dict),
+                **ray_param_dict,
+            ),
             evals=[(dtrain, "dtrain")],
             evals_result=evals_result,
-            _remote=remote)
+            _remote=remote,
+        )
 
         self.assertTrue("dtrain" in evals_result)
 
@@ -236,11 +242,13 @@ class LGBMRayEndToEndTest(unittest.TestCase):
                 num_actors=2,
                 cpus_per_actor=1,
                 allow_less_than_two_cpus=True,
-                **ray_param_dict),
+                **ray_param_dict,
+            ),
             valid_sets=[dtrain],
             valid_names=["dtrain"],
             evals_result=evals_result,
-            _remote=remote)
+            _remote=remote,
+        )
 
         self.assertTrue("dtrain" in evals_result)
 
@@ -252,8 +260,10 @@ class LGBMRayEndToEndTest(unittest.TestCase):
                 num_actors=2,
                 cpus_per_actor=1,
                 allow_less_than_two_cpus=True,
-                **ray_param_dict),
-            _remote=remote)
+                **ray_param_dict,
+            ),
+            _remote=remote,
+        )
 
         self.assertEqual(pred_y.shape[1], len(np.unique(self.y)))
         pred_y = np.argmax(pred_y, axis=1)
@@ -284,14 +294,16 @@ class LGBMRayEndToEndTest(unittest.TestCase):
         test_callback = _make_callback(tmpdir)
 
         self.testTrainPredict(
-            init=init, remote=remote, distributed_callbacks=[test_callback])
+            init=init, remote=remote, distributed_callbacks=[test_callback]
+        )
         rank_0_log_file = os.path.join(tmpdir, "rank_0.log")
         rank_1_log_file = os.path.join(tmpdir, "rank_1.log")
         self.assertTrue(os.path.exists(rank_1_log_file))
 
         rank_0_log = open(rank_0_log_file, "rt").read()
         self.assertEqual(
-            rank_0_log, "Actor 0: Init\n"
+            rank_0_log,
+            "Actor 0: Init\n"
             "Actor 0: Before loading\n"
             "Actor 0: After loading\n"
             "Actor 0: Before train\n"
@@ -305,7 +317,8 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             "Actor 0: Before loading\n"
             "Actor 0: After loading\n"
             "Actor 0: Before predict\n"
-            "Actor 0: After predict\n")
+            "Actor 0: After predict\n",
+        )
         shutil.rmtree(tmpdir)
 
     def testDistributedCallbacksTrainPredictClient(self):
@@ -333,15 +346,14 @@ class LGBMRayEndToEndTest(unittest.TestCase):
             train(
                 {
                     **self.params,
-                    **{
-                        "num_class": 2,
-                        "metric": ["multi_logloss", "multi_error"]
-                    }
+                    **{"num_class": 2, "metric": ["multi_logloss", "multi_error"]},
                 },  # This will error
                 train_set,
                 evals=[(train_set, "train")],
                 ray_params=RayParams(
-                    num_actors=1, cpus_per_actor=2, max_actor_restarts=0))
+                    num_actors=1, cpus_per_actor=2, max_actor_restarts=0
+                ),
+            )
         except RuntimeError as exc:
             self.assertTrue(exc.__cause__)
             self.assertTrue(isinstance(exc.__cause__, RayActorError))
@@ -351,11 +363,12 @@ class LGBMRayEndToEndTest(unittest.TestCase):
 
             self.assertTrue(exc.__cause__.__cause__.cause)
             self.assertTrue(
-                isinstance(exc.__cause__.__cause__.cause,
-                           RayXGBoostTrainingError))
+                isinstance(exc.__cause__.__cause__.cause, RayXGBoostTrainingError)
+            )
 
-            self.assertIn("label and prediction size not match",
-                          str(exc.__cause__.__cause__))
+            self.assertIn(
+                "label and prediction size not match", str(exc.__cause__.__cause__)
+            )
 
 
 class LGBMRayEndToEndTestVoting(LGBMRayEndToEndTest):
@@ -365,6 +378,8 @@ class LGBMRayEndToEndTestVoting(LGBMRayEndToEndTest):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

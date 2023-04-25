@@ -27,47 +27,72 @@
 # License:
 # https://github.com/microsoft/LightGBM/blob/c3b9363d02564625332583e166e3ab3135f436e3/LICENSE
 
-from typing import (Tuple, Dict, Any, List, Optional, Type, Union, Sequence,
-                    Callable)
-from copy import deepcopy
-from dataclasses import dataclass
-from packaging.version import Version
-
-import time
+import gc
 import logging
 import os
-import warnings
-import gc
 import threading
-
-import numpy as np
-import pandas as pd
+import time
+import warnings
+from copy import deepcopy
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 import lightgbm
-from lightgbm import LGBMModel, LGBMRanker, Booster
-from lightgbm.basic import _choose_param_value, _ConfigAliases, LightGBMError
-from lightgbm.callback import CallbackEnv, record_evaluation
-
+import numpy as np
+import pandas as pd
 import ray
+from lightgbm import Booster, LGBMModel, LGBMRanker
+from lightgbm.basic import LightGBMError, _choose_param_value, _ConfigAliases
+from lightgbm.callback import CallbackEnv, record_evaluation
+from packaging.version import Version
 from ray.util.annotations import PublicAPI
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-from xgboost_ray.main import (
-    _handle_queue, RayXGBoostActor, LEGACY_MATRIX, RayDeviceQuantileDMatrix,
-    concat_dataframes, _set_omp_num_threads, Queue, Event, DistributedCallback,
-    ENV, RayActorError, pickle, _PrepareActorTask, RayParams as RayXGBParams,
-    _TrainingState, _is_client_connected, is_session_enabled,
-    force_on_current_node, _assert_ray_support, _maybe_print_legacy_warning,
-    _Checkpoint, _create_communication_processes, RayTaskError,
-    RayXGBoostActorAvailable, RayXGBoostTrainingError, _create_placement_group,
-    _shutdown, PlacementGroup, ActorHandle, combine_data, _trigger_data_load,
-    DEFAULT_PG, _autodetect_resources as _autodetect_resources_base,
-    _ray_get_actor_cpus, get_current_placement_group)
-from xgboost_ray.session import put_queue
 from xgboost_ray import RayDMatrix
+from xgboost_ray.main import (
+    DEFAULT_PG,
+    ENV,
+    LEGACY_MATRIX,
+    ActorHandle,
+    DistributedCallback,
+    Event,
+    PlacementGroup,
+    Queue,
+    RayActorError,
+    RayDeviceQuantileDMatrix,
+)
+from xgboost_ray.main import RayParams as RayXGBParams
+from xgboost_ray.main import (
+    RayTaskError,
+    RayXGBoostActor,
+    RayXGBoostActorAvailable,
+    RayXGBoostTrainingError,
+    _assert_ray_support,
+)
+from xgboost_ray.main import _autodetect_resources as _autodetect_resources_base
+from xgboost_ray.main import (
+    _Checkpoint,
+    _create_communication_processes,
+    _create_placement_group,
+    _handle_queue,
+    _is_client_connected,
+    _maybe_print_legacy_warning,
+    _PrepareActorTask,
+    _ray_get_actor_cpus,
+    _set_omp_num_threads,
+    _shutdown,
+    _TrainingState,
+    _trigger_data_load,
+    combine_data,
+    concat_dataframes,
+    force_on_current_node,
+    get_current_placement_group,
+    is_session_enabled,
+    pickle,
+)
+from xgboost_ray.session import put_queue
 
-from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
 from lightgbm_ray.tune import _try_add_tune_callback, _TuneLGBMRank0Mixin
+from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -80,22 +105,24 @@ class StopException(Exception):
     pass
 
 
-def _check_cpus_per_actor_at_least_2(cpus_per_actor: int,
-                                     suppress_exception: bool):
+def _check_cpus_per_actor_at_least_2(cpus_per_actor: int, suppress_exception: bool):
     """Raise an exception or a warning if cpus_per_actor < 2"""
     if cpus_per_actor < 2:
         if suppress_exception:
-            warnings.warn("cpus_per_actor is set to less than 2. Distributed"
-                          " LightGBM needs at least 2 CPUs per actor to "
-                          "train efficiently. This may lead to a "
-                          "degradation of performance during training.")
+            warnings.warn(
+                "cpus_per_actor is set to less than 2. Distributed"
+                " LightGBM needs at least 2 CPUs per actor to "
+                "train efficiently. This may lead to a "
+                "degradation of performance during training."
+            )
         else:
             raise ValueError(
                 "cpus_per_actor is set to less than 2. Distributed"
                 " LightGBM needs at least 2 CPUs per actor to "
                 "train efficiently. You can suppress this "
                 "exception by setting allow_less_than_two_cpus "
-                "to True.")
+                "to True."
+            )
 
 
 def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
@@ -128,10 +155,8 @@ def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
                 "label": concat_dataframes(param["label"]),
                 "weight": concat_dataframes(param["weight"]),
                 "base_margin": concat_dataframes(param["base_margin"]),
-                "label_lower_bound": concat_dataframes(
-                    param["label_lower_bound"]),
-                "label_upper_bound": concat_dataframes(
-                    param["label_upper_bound"]),
+                "label_lower_bound": concat_dataframes(param["label_lower_bound"]),
+                "label_upper_bound": concat_dataframes(param["label_upper_bound"]),
             }
             param.update(dm_param)
 
@@ -148,27 +173,27 @@ class RayParams(RayXGBParams):
     allow_less_than_two_cpus: bool = False
 
     __doc__ = RayXGBParams.__doc__.replace(
-        """        elastic_training (bool): If True, training will continue with
+        """        elastic_training: If True, training will continue with
             fewer actors if an actor fails. Default False.""",
-        """        allow_less_than_two_cpus (bool): If True, an exception will not
-            be raised if `cpus_per_actor`. Default False."""
+        """        allow_less_than_two_cpus: If True, an exception will not
+            be raised if `cpus_per_actor`. Default False.""",
     ).replace(
-        """cpus_per_actor (int): Number of CPUs to be used per Ray actor.""",
-        """cpus_per_actor (int): Number of CPUs to be used per Ray actor.
+        """cpus_per_actor: Number of CPUs to be used per Ray actor.""",
+        """cpus_per_actor: Number of CPUs to be used per Ray actor.
             If smaller than 2, training might be substantially slower
             because communication work and training work will block
             each other. This will raise an exception unless
-            `allow_less_than_two_cpus` is True.""")
+            `allow_less_than_two_cpus` is True.""",
+    )
 
     def get_tune_resources(self):
         _check_cpus_per_actor_at_least_2(
-            self.cpus_per_actor,
-            getattr(self, "allow_less_than_two_cpus", False))
+            self.cpus_per_actor, getattr(self, "allow_less_than_two_cpus", False)
+        )
         return super().get_tune_resources()
 
 
-def _validate_ray_params(ray_params: Union[None, RayParams, dict]) \
-        -> RayParams:
+def _validate_ray_params(ray_params: Union[None, RayParams, dict]) -> RayParams:
     if ray_params is None:
         ray_params = RayParams()
     elif isinstance(ray_params, dict):
@@ -178,34 +203,36 @@ def _validate_ray_params(ray_params: Union[None, RayParams, dict]) \
             f"`ray_params` must be a `RayParams` instance, a dict, or None, "
             f"but it was {type(ray_params)}."
             f"\nFIX THIS preferably by passing a `RayParams` instance as "
-            f"the `ray_params` parameter.")
+            f"the `ray_params` parameter."
+        )
     if ray_params.num_actors <= 0:
         raise ValueError(
             "The `num_actors` parameter is set to 0. Please always specify "
             "the number of distributed actors you want to use."
             "\nFIX THIS by passing a `RayParams(num_actors=X)` argument "
-            "to your call to lightgbm_ray.")
+            "to your call to lightgbm_ray."
+        )
     elif ray_params.num_actors < 2:
         warnings.warn(
             f"`num_actors` in `ray_params` is smaller than 2 "
-            f"({ray_params.num_actors}). LightGBM will NOT be distributed!")
+            f"({ray_params.num_actors}). LightGBM will NOT be distributed!"
+        )
     return ray_params
 
 
 class RayLightGBMActor(RayXGBoostActor):
     def __init__(
-            self,
-            rank: int,
-            num_actors: int,
-            model_factory: Optional[Type[LGBMModel]] = None,
-            queue: Optional[Queue] = None,
-            stop_event: Optional[Event] = None,
-            checkpoint_frequency: int = 5,
-            distributed_callbacks: Optional[List[DistributedCallback]] = None,
-            network_params: Optional[dict] = None,
+        self,
+        rank: int,
+        num_actors: int,
+        model_factory: Optional[Type[LGBMModel]] = None,
+        queue: Optional[Queue] = None,
+        stop_event: Optional[Event] = None,
+        checkpoint_frequency: int = 5,
+        distributed_callbacks: Optional[List[DistributedCallback]] = None,
+        network_params: Optional[dict] = None,
     ):
-        self.network_params = {} if not network_params else \
-            network_params.copy()
+        self.network_params = {} if not network_params else network_params.copy()
         self.fixed_port = "local_listen_port" in self.network_params
         if "time_out" not in self.network_params:
             self.network_params["time_out"] = 120
@@ -216,7 +243,8 @@ class RayLightGBMActor(RayXGBoostActor):
             queue=queue,
             stop_event=stop_event,
             checkpoint_frequency=checkpoint_frequency,
-            distributed_callbacks=distributed_callbacks)
+            distributed_callbacks=distributed_callbacks,
+        )
 
     def _save_checkpoint_callback(self, is_rank_0: bool) -> Callable:
         this = self
@@ -225,8 +253,10 @@ class RayLightGBMActor(RayXGBoostActor):
             def _callback(env: CallbackEnv) -> None:
                 if not is_rank_0:
                     return
-                if (env.iteration == env.end_iteration - 1
-                        or env.iteration % this.checkpoint_frequency == 0):
+                if (
+                    env.iteration == env.end_iteration - 1
+                    or env.iteration % this.checkpoint_frequency == 0
+                ):
                     if env.iteration == env.end_iteration - 1:
                         iter = -1
                     else:
@@ -235,8 +265,9 @@ class RayLightGBMActor(RayXGBoostActor):
                     put_queue(
                         _Checkpoint(
                             iter,
-                            pickle.dumps(
-                                env.model.model_to_string(num_iteration=-1))))
+                            pickle.dumps(env.model.model_to_string(num_iteration=-1)),
+                        )
+                    )
 
             _callback.order = 1  # type: ignore
             return _callback
@@ -253,8 +284,10 @@ class RayLightGBMActor(RayXGBoostActor):
         def _stop_callback() -> Callable:
             def _callback(env: CallbackEnv) -> None:
                 try:
-                    if this._stop_event.is_set() or \
-                            this._get_stop_event() is not initial_stop_event:
+                    if (
+                        this._stop_event.is_set()
+                        or this._get_stop_event() is not initial_stop_event
+                    ):
                         raise StopException()
                 except RayActorError:
                     raise StopException()
@@ -284,11 +317,11 @@ class RayLightGBMActor(RayXGBoostActor):
         return is_port_free(port)
 
     def set_network_params(
-            self,
-            machines: str,
-            local_listen_port: int,
-            num_machines: int,
-            time_out: Optional[int] = None,
+        self,
+        machines: str,
+        local_listen_port: int,
+        num_machines: int,
+        time_out: Optional[int] = None,
     ):
         """Set LightGBM params responsible for networking"""
         self.network_params["machines"] = machines
@@ -318,9 +351,16 @@ class RayLightGBMActor(RayXGBoostActor):
 
         self._distributed_callbacks.after_data_loading(self, data)
 
-    def train(self, return_bst: bool, params: Dict[str, Any],
-              dtrain: RayDMatrix, evals: Tuple[RayDMatrix, str],
-              boost_rounds_left: int, *args, **kwargs) -> Dict[str, Any]:
+    def train(
+        self,
+        return_bst: bool,
+        params: Dict[str, Any],
+        dtrain: RayDMatrix,
+        evals: Tuple[RayDMatrix, str],
+        boost_rounds_left: int,
+        *args,
+        **kwargs,
+    ) -> Dict[str, Any]:
         if self.model_factory is None:
             raise ValueError("model_factory cannot be None for training")
 
@@ -331,8 +371,8 @@ class RayLightGBMActor(RayXGBoostActor):
         local_params = _choose_param_value(
             main_param_name="num_threads",
             params=params,
-            default_value=num_threads
-            if num_threads > 0 else _ray_get_actor_cpus())
+            default_value=num_threads if num_threads > 0 else _ray_get_actor_cpus(),
+        )
 
         if "init_model" in kwargs:
             if isinstance(kwargs["init_model"], bytes):
@@ -357,8 +397,7 @@ class RayLightGBMActor(RayXGBoostActor):
         for deval, name in evals:
             if deval not in self._data:
                 self.load_data(deval)
-            local_evals.append((self._data[deval]["data"],
-                                self._data[deval]["label"]))
+            local_evals.append((self._data[deval]["data"], self._data[deval]["label"]))
             local_eval_names.append(name)
             local_eval_sample_weights.append(self._data[deval]["weight"])
             local_eval_init_scores.append(self._data[deval]["base_margin"])
@@ -381,15 +420,11 @@ class RayLightGBMActor(RayXGBoostActor):
             # In lightgbm<3.3.0, verbosity doesn't always work as a parameter
             # but passing it as kwarg to fit does
             local_params = _choose_param_value(
-                main_param_name="verbosity",
-                params=local_params,
-                default_value=1)
+                main_param_name="verbosity", params=local_params, default_value=1
+            )
             kwargs["verbose"] = local_params.pop("verbosity")
 
-        result_dict = {
-            "train_n": self._local_n[dtrain],
-            "evals_result": evals_result
-        }
+        result_dict = {"train_n": self._local_n[dtrain], "evals_result": evals_result}
         error_dict = {}
 
         network_params = self.network_params
@@ -400,8 +435,10 @@ class RayLightGBMActor(RayXGBoostActor):
         is_ranker = issubclass(self.model_factory, LGBMRanker)
 
         def _train():
-            logger.debug(f"starting LightGBM training, rank {self.rank}, "
-                         f"{self.network_params}, {local_params}, {kwargs}")
+            logger.debug(
+                f"starting LightGBM training, rank {self.rank}, "
+                f"{self.network_params}, {local_params}, {kwargs}"
+            )
             try:
                 model = self.model_factory(**local_params)
 
@@ -422,7 +459,8 @@ class RayLightGBMActor(RayXGBoostActor):
                             eval_names=local_eval_names,
                             eval_sample_weight=local_eval_sample_weights,
                             eval_init_score=local_eval_init_scores,
-                            **kwargs)
+                            **kwargs,
+                        )
                     else:
                         model.fit(
                             local_dtrain["data"],
@@ -433,11 +471,14 @@ class RayLightGBMActor(RayXGBoostActor):
                             eval_names=local_eval_names,
                             eval_sample_weight=local_eval_sample_weights,
                             eval_init_score=local_eval_init_scores,
-                            **kwargs)
-                    result_dict.update({
-                        "bst": model,
-                        "evals_result": model.evals_result_,
-                    })
+                            **kwargs,
+                        )
+                    result_dict.update(
+                        {
+                            "bst": model,
+                            "evals_result": model.evals_result_,
+                        }
+                    )
                     self._stop_event.set()
             except StopException:
                 # Usually this should be caught by XGBoost core.
@@ -477,11 +518,13 @@ class RayLightGBMActor(RayXGBoostActor):
 
         return result_dict
 
-    def predict(self,
-                model: Union[LGBMModel, Booster],
-                data: RayDMatrix,
-                method="predict",
-                **kwargs):
+    def predict(
+        self,
+        model: Union[LGBMModel, Booster],
+        data: RayDMatrix,
+        method="predict",
+        **kwargs,
+    ):
         self._distributed_callbacks.before_predict(self)
 
         _set_omp_num_threads()
@@ -505,28 +548,30 @@ class _RemoteRayLightGBMActor(RayLightGBMActor):
     pass
 
 
-def _autodetect_resources(ray_params: RayParams,
-                          use_tree_method: bool = False) -> Tuple[int, int]:
+def _autodetect_resources(
+    ray_params: RayParams, use_tree_method: bool = False
+) -> Tuple[int, int]:
     cpus_per_actor, gpus_per_actor = _autodetect_resources_base(
-        ray_params, use_tree_method)
+        ray_params, use_tree_method
+    )
     if ray_params.cpus_per_actor <= 0:
         cpus_per_actor = max(2, cpus_per_actor)
     return cpus_per_actor, gpus_per_actor
 
 
 def _create_actor(
-        rank: int,
-        num_actors: int,
-        model_factory: Type[LGBMModel],
-        num_cpus_per_actor: int,
-        num_gpus_per_actor: int,
-        resources_per_actor: Optional[Dict] = None,
-        placement_group: Optional[PlacementGroup] = None,
-        queue: Optional[Queue] = None,
-        checkpoint_frequency: int = 5,
-        distributed_callbacks: Optional[Sequence[DistributedCallback]] = None,
-        ip: Optional[str] = None,
-        port: Optional[int] = None,
+    rank: int,
+    num_actors: int,
+    model_factory: Type[LGBMModel],
+    num_cpus_per_actor: int,
+    num_gpus_per_actor: int,
+    resources_per_actor: Optional[Dict] = None,
+    placement_group: Optional[PlacementGroup] = None,
+    queue: Optional[Queue] = None,
+    checkpoint_frequency: int = 5,
+    distributed_callbacks: Optional[Sequence[DistributedCallback]] = None,
+    ip: Optional[str] = None,
+    port: Optional[int] = None,
 ) -> ActorHandle:
     # If we have an IP passed, force the actor to be spawned on a node
     # with that IP
@@ -545,7 +590,8 @@ def _create_actor(
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             placement_group=placement_group or DEFAULT_PG,
             placement_group_capture_child_tasks=True,
-        ))
+        ),
+    )
 
     return actor_cls.remote(
         rank=rank,
@@ -554,22 +600,25 @@ def _create_actor(
         queue=queue,
         checkpoint_frequency=checkpoint_frequency,
         distributed_callbacks=distributed_callbacks,
-        network_params={"local_listen_port": port} if port else None)
+        network_params={"local_listen_port": port} if port else None,
+    )
 
 
-def _train(params: Dict,
-           dtrain: RayDMatrix,
-           model_factory: Type[LGBMModel],
-           boost_rounds_left: int,
-           *args,
-           evals=(),
-           ray_params: RayParams,
-           cpus_per_actor: int,
-           gpus_per_actor: int,
-           _training_state: _TrainingState,
-           machine_addresses: Optional[List[Tuple[str, str]]] = None,
-           listen_port: Optional[int] = None,
-           **kwargs) -> Tuple[LGBMModel, Dict, Dict]:
+def _train(
+    params: Dict,
+    dtrain: RayDMatrix,
+    model_factory: Type[LGBMModel],
+    boost_rounds_left: int,
+    *args,
+    evals=(),
+    ray_params: RayParams,
+    cpus_per_actor: int,
+    gpus_per_actor: int,
+    _training_state: _TrainingState,
+    machine_addresses: Optional[List[Tuple[str, str]]] = None,
+    listen_port: Optional[int] = None,
+    **kwargs,
+) -> Tuple[LGBMModel, Dict, Dict]:
     """This is the local train function wrapped by :func:`train() <train>`.
 
     This function can be thought of one invocation of a multi-actor lightgbm
@@ -582,8 +631,11 @@ def _train(params: Dict,
     errors occur. It is called more than once if errors occurred (e.g. an
     actor died) and failure handling is enabled.
     """
-    from xgboost_ray.elastic import _maybe_schedule_new_actors, \
-        _update_scheduled_actor_states, _get_actor_alive_status
+    from xgboost_ray.elastic import (
+        _get_actor_alive_status,
+        _maybe_schedule_new_actors,
+        _update_scheduled_actor_states,
+    )
 
     # Un-schedule possible scheduled restarts
     _training_state.restart_training_at = None
@@ -595,13 +647,14 @@ def _train(params: Dict,
             raise ValueError(
                 "Specified number of threads greater than number of CPUs. "
                 "\nFIX THIS by passing a lower value for the `n_jobs` "
-                "parameter or a higher number for `cpus_per_actor`.")
+                "parameter or a higher number for `cpus_per_actor`."
+            )
     else:
         params["n_jobs"] = cpus_per_actor
 
     _check_cpus_per_actor_at_least_2(
-        params["n_jobs"], getattr(ray_params, "allow_less_than_two_cpus",
-                                  False))
+        params["n_jobs"], getattr(ray_params, "allow_less_than_two_cpus", False)
+    )
 
     # This is a callback that handles actor failures.
     # We identify the rank of the failed actor, add this to a set of
@@ -620,8 +673,8 @@ def _train(params: Dict,
     for i in list(_training_state.failed_actor_ranks):
         if _training_state.actors[i] is not None:
             raise RuntimeError(
-                f"Trying to create actor with rank {i}, but it already "
-                f"exists.")
+                f"Trying to create actor with rank {i}, but it already " f"exists."
+            )
         ip = None
         port = None
         if machine_addresses:
@@ -641,7 +694,8 @@ def _train(params: Dict,
             checkpoint_frequency=ray_params.checkpoint_frequency,
             distributed_callbacks=ray_params.distributed_callbacks,
             ip=ip,
-            port=port)
+            port=port,
+        )
         # Set actor entry in our list
         _training_state.actors[i] = actor
         # Remove from this set so it is not created again
@@ -649,9 +703,11 @@ def _train(params: Dict,
         newly_created += 1
 
     alive_actors = sum(1 for a in _training_state.actors if a is not None)
-    logger.info(f"[RayLightGBM] Created {newly_created} new actors "
-                f"({alive_actors} total actors). Waiting until actors "
-                f"are ready for training.")
+    logger.info(
+        f"[RayLightGBM] Created {newly_created} new actors "
+        f"({alive_actors} total actors). Waiting until actors "
+        f"are ready for training."
+    )
 
     # For distributed datasets (e.g. Modin), this will initialize
     # (and fix) the assignment of data shards to actor ranks
@@ -671,7 +727,9 @@ def _train(params: Dict,
             # Maybe we got a new Event actor, so send it to all actors.
             stop_event=_training_state.stop_event,
             # Trigger data loading
-            load_data=load_data) for actor in _training_state.actors
+            load_data=load_data,
+        )
+        for actor in _training_state.actors
         if actor is not None
     ]
 
@@ -683,8 +741,10 @@ def _train(params: Dict,
         while not all(ready_states):
             if time.time() >= last_status + ENV.STATUS_FREQUENCY_S:
                 wait_time = time.time() - start_wait
-                logger.info(f"Waiting until actors are ready "
-                            f"({wait_time:.0f} seconds passed).")
+                logger.info(
+                    f"Waiting until actors are ready "
+                    f"({wait_time:.0f} seconds passed)."
+                )
                 last_status = time.time()
             time.sleep(0.1)
             ready_states = [task.is_ready() for task in prepare_actor_tasks]
@@ -703,33 +763,29 @@ def _train(params: Dict,
     # Load checkpoint if we have one. In that case we need to adjust the
     # number of training rounds.
     if _training_state.checkpoint.value:
-        booster = Booster(
-            model_str=pickle.loads(_training_state.checkpoint.value))
+        booster = Booster(model_str=pickle.loads(_training_state.checkpoint.value))
         kwargs["init_model"] = booster
         if _training_state.checkpoint.iteration == -1:
             # -1 means training already finished.
             logger.error(
                 "Trying to load continue from checkpoint, but the checkpoint"
                 "indicates training already finished. Returning last"
-                "checkpointed model instead.")
+                "checkpointed model instead."
+            )
             return kwargs["init_model"], {}, _training_state.additional_results
 
     # The callback_returns dict contains actor-rank indexed lists of
     # results obtained through the `put_queue` function, usually
     # sent via callbacks.
-    callback_returns = _training_state.additional_results.get(
-        "callback_returns")
+    callback_returns = _training_state.additional_results.get("callback_returns")
     if callback_returns is None:
         callback_returns = [list() for _ in range(len(_training_state.actors))]
-        _training_state.additional_results[
-            "callback_returns"] = callback_returns
+        _training_state.additional_results["callback_returns"] = callback_returns
 
     _training_state.training_started_at = time.time()
 
     # Trigger the train function
-    live_actors = [
-        actor for actor in _training_state.actors if actor is not None
-    ]
+    live_actors = [actor for actor in _training_state.actors if actor is not None]
 
     # LightGBM specific: handle actor addresses
     # if neither local_listening_port nor machines are set
@@ -742,8 +798,7 @@ def _train(params: Dict,
     max_attempts = 5
     i = 0
     for i in range(max_attempts):
-        addresses = ray.get(
-            [actor.find_free_address.remote() for actor in live_actors])
+        addresses = ray.get([actor.find_free_address.remote() for actor in live_actors])
         if addresses:
             _, ports = zip(*addresses)
             ports = list(ports)
@@ -752,8 +807,7 @@ def _train(params: Dict,
                 machines = ",".join(machine_addresses_new)
                 break
             if machine_addresses:
-                raise ValueError(
-                    "Machine addresses contains non-unique entries.")
+                raise ValueError("Machine addresses contains non-unique entries.")
             else:
                 logger.debug("Couldn't obtain unique addresses, trying again.")
     if machines:
@@ -761,10 +815,12 @@ def _train(params: Dict,
     else:
         raise ValueError(
             f"Couldn't obtain enough unique addresses for {len(live_actors)}."
-            " Try reducing the number of actors.")
+            " Try reducing the number of actors."
+        )
     for i, actor in enumerate(live_actors):
-        actor.set_network_params.remote(machines, ports[i], len(live_actors),
-                                        params.get("time_out", 120))
+        actor.set_network_params.remote(
+            machines, ports[i], len(live_actors), params.get("time_out", 120)
+        )
 
     training_futures = [
         actor.train.remote(
@@ -774,7 +830,9 @@ def _train(params: Dict,
             evals,
             boost_rounds_left,
             *args,
-            **kwargs) for i, actor in enumerate(live_actors)
+            **kwargs,
+        )
+        for i, actor in enumerate(live_actors)
     ]
 
     # Failure handling loop. Here we wait until all training tasks finished.
@@ -799,29 +857,33 @@ def _train(params: Dict,
                 _handle_queue(
                     queue=_training_state.queue,
                     checkpoint=_training_state.checkpoint,
-                    callback_returns=callback_returns)
+                    callback_returns=callback_returns,
+                )
 
-            if ray_params.elastic_training \
-                    and not ELASTIC_RESTART_DISABLED:
+            if ray_params.elastic_training and not ELASTIC_RESTART_DISABLED:
                 _maybe_schedule_new_actors(
                     training_state=_training_state,
                     num_cpus_per_actor=cpus_per_actor,
                     num_gpus_per_actor=gpus_per_actor,
                     resources_per_actor=ray_params.resources_per_actor,
                     ray_params=ray_params,
-                    load_data=load_data)
+                    load_data=load_data,
+                )
 
                 # This may raise RayXGBoostActorAvailable
                 _update_scheduled_actor_states(_training_state)
 
             if time.time() >= last_status + ENV.STATUS_FREQUENCY_S:
                 wait_time = time.time() - start_wait
-                logger.info(f"Training in progress "
-                            f"({wait_time:.0f} seconds since last restart).")
+                logger.info(
+                    f"Training in progress "
+                    f"({wait_time:.0f} seconds since last restart)."
+                )
                 last_status = time.time()
 
             ready, not_ready = ray.wait(
-                not_ready, num_returns=len(not_ready), timeout=1)
+                not_ready, num_returns=len(not_ready), timeout=1
+            )
             ray.get(ready)
 
         # Get items from queue one last time
@@ -831,7 +893,8 @@ def _train(params: Dict,
             _handle_queue(
                 queue=_training_state.queue,
                 checkpoint=_training_state.checkpoint,
-                callback_returns=callback_returns)
+                callback_returns=callback_returns,
+            )
 
     # The inner loop should catch all exceptions
     except Exception as exc:
@@ -858,12 +921,12 @@ def _train(params: Dict,
     # However, if the training succeded, at least one result
     # will have a booster.
     try:
-        result_with_booster = next(
-            result for result in all_results if "bst" in result)
+        result_with_booster = next(result for result in all_results if "bst" in result)
     except StopIteration:
         raise RuntimeError(
             "No actor returned a fitted model. "
-            "This means training was not completed successfully.")
+            "This means training was not completed successfully."
+        )
     bst: LGBMModel = result_with_booster["bst"]
     evals_result = result_with_booster["evals_result"]
 
@@ -879,8 +942,7 @@ def _train(params: Dict,
         bst._other_params.pop(param, None)
 
     if callback_returns:
-        _training_state.additional_results[
-            "callback_returns"] = callback_returns
+        _training_state.additional_results["callback_returns"] = callback_returns
 
     total_n = sum(res["train_n"] or 0 for res in all_results)
 
@@ -891,21 +953,21 @@ def _train(params: Dict,
 
 @PublicAPI(stability="beta")
 def train(
-        params: Dict,
-        dtrain: RayDMatrix,
-        model_factory: Type[LGBMModel] = LGBMModel,
-        num_boost_round: int = 10,
-        *args,
-        valid_sets: Optional[List[RayDMatrix]] = None,
-        valid_names: Optional[List[str]] = None,
-        verbose_eval: Union[bool, int] = True,
-        evals: Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix, str]] = (
-        ),
-        evals_result: Optional[Dict] = None,
-        additional_results: Optional[Dict] = None,
-        ray_params: Union[None, RayParams, Dict] = None,
-        _remote: Optional[bool] = None,
-        **kwargs) -> LGBMModel:
+    params: Dict,
+    dtrain: RayDMatrix,
+    model_factory: Type[LGBMModel] = LGBMModel,
+    num_boost_round: int = 10,
+    *args,
+    valid_sets: Optional[List[RayDMatrix]] = None,
+    valid_names: Optional[List[str]] = None,
+    verbose_eval: Union[bool, int] = True,
+    evals: Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix, str]] = (),
+    evals_result: Optional[Dict] = None,
+    additional_results: Optional[Dict] = None,
+    ray_params: Union[None, RayParams, Dict] = None,
+    _remote: Optional[bool] = None,
+    **kwargs,
+) -> LGBMModel:
     """Distributed LightGBM training via Ray.
 
     This function will connect to a Ray cluster, create ``num_actors``
@@ -948,19 +1010,17 @@ def train(
     Otherwise, training is aborted.
 
     Args:
-        params (Dict): parameter dict passed to ``LGBMModel``
-        dtrain (RayDMatrix): Data object containing the training data.
-        model_factory (Type[LGBMModel]) Model class to use for training.
-        valid_sets (Optional[List[RayDMatrix]]):
+        params: parameter dict passed to ``LGBMModel``
+        dtrain: Data object containing the training data.
+        model_factory: Model class to use for training.
+        valid_sets:
             List of data to be evaluated on during training.
             Mutually exclusive with ``evals``.
-        valid_names Optional[List[str]]:
-            Names of ``valid_sets``.
-        evals (Union[List[Tuple[RayDMatrix, str]], Tuple[RayDMatrix, str]]):
-            ``evals`` tuple passed to ``LGBMModel.fit()``.
+        valid_names: Names of ``valid_sets``.
+        evals: ``evals`` tuple passed to ``LGBMModel.fit()``.
             Mutually exclusive with ``valid_sets``.
-        evals_result (Optional[Dict]): Dict to store evaluation results in.
-        verbose_eval (Union[bool, int]):
+        evals_result: Dict to store evaluation results in.
+        verbose_eval:
             Requires at least one validation data.
             If True, the eval metric on the valid set is printed at each
             boosting stage.
@@ -971,11 +1031,11 @@ def train(
             With ``verbose_eval`` = 4 and at least one item in ``valid_sets``,
             an evaluation metric is printed every 4 (instead of 1) boosting
             stages.
-        additional_results (Optional[Dict]): Dict to store additional results.
-        ray_params (Union[None, RayParams, Dict]): Parameters to configure
+        additional_results: Dict to store additional results.
+        ray_params: Parameters to configure
             Ray-specific behavior. See :class:`RayParams` for a list of valid
             configuration parameters.
-        _remote (bool): Whether to run the driver process in a remote
+        _remote: Whether to run the driver process in a remote
             function. This is enabled by default in Ray client mode.
         **kwargs: Keyword arguments will be passed to the local
             `model_factory.fit()` calls.
@@ -985,8 +1045,7 @@ def train(
     os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
 
     if _remote is None:
-        _remote = _is_client_connected() and \
-                  not is_session_enabled()
+        _remote = _is_client_connected() and not is_session_enabled()
 
     if not ray.is_initialized():
         ray.init()
@@ -1004,7 +1063,8 @@ def train(
                 evals_result=_evals_result,
                 additional_results=_additional_results,
                 verbose_eval=verbose_eval,
-                **kwargs)
+                **kwargs,
+            )
             return bst, _evals_result, _additional_results
 
         # Make sure that train is called on the server node.
@@ -1021,7 +1081,8 @@ def train(
                 ray_params=ray_params,
                 _remote=False,
                 **kwargs,
-            ))
+            )
+        )
         if isinstance(evals_result, dict):
             evals_result.update(train_evals_result)
         if isinstance(additional_results, dict):
@@ -1035,47 +1096,53 @@ def train(
     params = params.copy()
 
     if evals and valid_sets:
-        raise ValueError(
-            "Specifying both `evals` and `valid_sets` is ambiguous.")
+        raise ValueError("Specifying both `evals` and `valid_sets` is ambiguous.")
 
     # LightGBM specific - capture whether local_listen_port or its aliases
     # were provided
     listen_port_in_params = any(
-        alias in params for alias in _ConfigAliases.get("local_listen_port"))
+        alias in params for alias in _ConfigAliases.get("local_listen_port")
+    )
 
     # LightGBM specific - capture whether machines or its aliases
     # were provided
     machines_in_params = any(
-        alias in params for alias in _ConfigAliases.get("machines"))
+        alias in params for alias in _ConfigAliases.get("machines")
+    )
 
     # LightGBM specific - validate machines and local_listening_port
     machine_addresses = None
     listen_port = None
     if machines_in_params:
         params = _choose_param_value(
-            main_param_name="machines", params=params, default_value=None)
+            main_param_name="machines", params=params, default_value=None
+        )
         machines = params["machines"]
         machine_addresses = machines.split(",")
         if len(set(machine_addresses)) != len(machine_addresses):
             raise ValueError(
                 f"Found duplicates in `machines` ({machines}). Each entry in "
-                "`machines` must be a unique IP-port combination.")
+                "`machines` must be a unique IP-port combination."
+            )
         if len(machine_addresses) != ray_params.num_actors:
             raise ValueError(
                 f"`num_actors` in `ray_params` ({ray_params.num_actors}) must "
                 "match the number of IP-port combinations in `machines` "
-                f"({len(machine_addresses)}).")
+                f"({len(machine_addresses)})."
+            )
         logger.info(f"Using user passed machines {machine_addresses}")
     if listen_port_in_params:
         params = _choose_param_value(
-            main_param_name="local_listen_port",
-            params=params,
-            default_value=None)
+            main_param_name="local_listen_port", params=params, default_value=None
+        )
         listen_port = params["local_listen_port"]
         logger.info(f"Using user passed local_listen_port {listen_port}")
 
-    max_actor_restarts = ray_params.max_actor_restarts \
-        if ray_params.max_actor_restarts >= 0 else float("inf")
+    max_actor_restarts = (
+        ray_params.max_actor_restarts
+        if ray_params.max_actor_restarts >= 0
+        else float("inf")
+    )
     _assert_ray_support()
 
     if not isinstance(dtrain, RayDMatrix):
@@ -1083,21 +1150,25 @@ def train(
             "The `dtrain` argument passed to `train()` is not a RayDMatrix, "
             "but of type {}. "
             "\nFIX THIS by instantiating a RayDMatrix first: "
-            "`dtrain = RayDMatrix(data=data, label=label)`.".format(
-                type(dtrain)))
+            "`dtrain = RayDMatrix(data=data, label=label)`.".format(type(dtrain))
+        )
 
     added_tune_callback = _try_add_tune_callback(kwargs)
     # LightGBM currently does not support elastic training.
     if ray_params.elastic_training:
-        raise ValueError("Elastic Training cannot be used with LightGBM. "
-                         "Please disable elastic_training in `ray_params` "
-                         "in order to use LightGBM-Ray.")
+        raise ValueError(
+            "Elastic Training cannot be used with LightGBM. "
+            "Please disable elastic_training in `ray_params` "
+            "in order to use LightGBM-Ray."
+        )
 
     params = _choose_param_value(
-        main_param_name="tree_learner", params=params, default_value="data")
+        main_param_name="tree_learner", params=params, default_value="data"
+    )
 
     params = _choose_param_value(
-        main_param_name="device_type", params=params, default_value="cpu")
+        main_param_name="device_type", params=params, default_value="cpu"
+    )
 
     if added_tune_callback or get_current_placement_group():
         # Don't autodetect resources when used with Tune.
@@ -1108,10 +1179,14 @@ def train(
             ray_params=ray_params,
             use_tree_method="device_type" in params
             and params["device_type"] is not None
-            and params["device_type"] != "cpu")
+            and params["device_type"] != "cpu",
+        )
 
     allowed_tree_learners = {
-        "data", "data_parallel", "voting", "voting_parallel"
+        "data",
+        "data_parallel",
+        "voting",
+        "voting_parallel"
         # not yet supported in LightGBM python API
         # (as of ver 3.2.1)
         # "feature", "feature_parallel",
@@ -1119,7 +1194,8 @@ def train(
     if params["tree_learner"] not in allowed_tree_learners:
         warnings.warn(
             f"Parameter tree_learner set to {params['tree_learner']},"
-            " which is not allowed. Using 'data' as default")
+            " which is not allowed. Using 'data' as default"
+        )
         params["tree_learner"] = "data"
 
     for param_alias in _ConfigAliases.get("num_iterations", "n_estimators"):
@@ -1127,7 +1203,8 @@ def train(
             raise ValueError(
                 f"Do not pass {param_alias} as a parameter. Instead, "
                 "set the `num_boost_round` argument to control "
-                "the number of iterations/trees.")
+                "the number of iterations/trees."
+            )
 
     for param_alias in _ConfigAliases.get("num_machines", "num_threads"):
         if param_alias in params:
@@ -1135,8 +1212,8 @@ def train(
             params.pop(param_alias)
 
     if not verbose_eval and not any(
-            verbose_alias in params
-            for verbose_alias in _ConfigAliases.get("verbosity")):
+        verbose_alias in params for verbose_alias in _ConfigAliases.get("verbosity")
+    ):
         params["verbose"] = -1
 
     if gpus_per_actor > 0 and params["device_type"] == "cpu":
@@ -1145,31 +1222,37 @@ def train(
             "device type is set to 'cpu'. Thus, GPUs will "
             "currently not be used. To enable GPUs usage, please set the "
             "`device_type` to a GPU-compatible option, "
-            "e.g. `gpu`.")
+            "e.g. `gpu`."
+        )
 
     if gpus_per_actor == 0 and cpus_per_actor == 0:
-        raise ValueError("cpus_per_actor and gpus_per_actor both cannot be "
-                         "0. Are you sure your cluster has CPUs available?")
+        raise ValueError(
+            "cpus_per_actor and gpus_per_actor both cannot be "
+            "0. Are you sure your cluster has CPUs available?"
+        )
 
     if ray_params.elastic_training and ray_params.max_failed_actors == 0:
         raise ValueError(
             "Elastic training enabled but the maximum number of failed "
             "actors is set to 0. This means that elastic training is "
             "effectively disabled. Please set `RayParams.max_failed_actors` "
-            "to something larger than 0 to enable elastic training.")
+            "to something larger than 0 to enable elastic training."
+        )
 
     if ray_params.elastic_training and ray_params.max_actor_restarts == 0:
         raise ValueError(
             "Elastic training enabled but the maximum number of actor "
             "restarts is set to 0. This means that elastic training is "
             "effectively disabled. Please set `RayParams.max_actor_restarts` "
-            "to something larger than 0 to enable elastic training.")
+            "to something larger than 0 to enable elastic training."
+        )
 
     if not dtrain.has_label:
         raise ValueError(
             "Training data has no label set. Please make sure to set "
             "the `label` argument when initializing `RayDMatrix()` "
-            "for data you would like to train on.")
+            "for data you would like to train on."
+        )
 
     if not dtrain.loaded and not dtrain.distributed:
         dtrain.load_data(ray_params.num_actors)
@@ -1189,13 +1272,15 @@ def train(
     if evals:
         for (deval, _name) in evals:
             if not isinstance(deval, RayDMatrix):
-                raise ValueError("Evaluation data must be a `RayDMatrix`, got "
-                                 f"{type(deval)}.")
+                raise ValueError(
+                    "Evaluation data must be a `RayDMatrix`, got " f"{type(deval)}."
+                )
             if not deval.has_label:
                 raise ValueError(
                     "Evaluation data has no label set. Please make sure to set"
                     " the `label` argument when initializing `RayDMatrix()` "
-                    "for data you would like to evaluate on.")
+                    "for data you would like to evaluate on."
+                )
             if not deval.loaded and not deval.distributed:
                 deval.load_data(ray_params.num_actors)
 
@@ -1222,15 +1307,19 @@ def train(
             placement_strategy = "SPREAD"
 
     if placement_strategy is not None:
-        pg = _create_placement_group(cpus_per_actor, gpus_per_actor,
-                                     ray_params.resources_per_actor,
-                                     ray_params.num_actors, placement_strategy)
+        pg = _create_placement_group(
+            cpus_per_actor,
+            gpus_per_actor,
+            ray_params.resources_per_actor,
+            ray_params.num_actors,
+            placement_strategy,
+        )
     else:
         pg = None
 
     start_actor_ranks = set(range(ray_params.num_actors))  # Start these
 
-    total_training_time = 0.
+    total_training_time = 0.0
     boost_rounds_left = num_boost_round
     while tries <= max_actor_restarts:
         if checkpoint.iteration >= 0:
@@ -1245,10 +1334,11 @@ def train(
             stop_event=stop_event,
             checkpoint=checkpoint,
             additional_results=current_results,
-            training_started_at=0.,
+            training_started_at=0.0,
             placement_group=pg,
             failed_actor_ranks=start_actor_ranks,
-            pending_actors=pending_actors)
+            pending_actors=pending_actors,
+        )
 
         try:
             bst, train_evals_result, train_additional_results = _train(
@@ -1264,57 +1354,59 @@ def train(
                 _training_state=training_state,
                 machine_addresses=machine_addresses,
                 listen_port=listen_port,
-                **kwargs)
-            if training_state.training_started_at > 0.:
-                total_training_time += time.time(
-                ) - training_state.training_started_at
+                **kwargs,
+            )
+            if training_state.training_started_at > 0.0:
+                total_training_time += time.time() - training_state.training_started_at
             break
         except (RayActorError, RayTaskError) as exc:
-            if training_state.training_started_at > 0.:
-                total_training_time += time.time(
-                ) - training_state.training_started_at
+            if training_state.training_started_at > 0.0:
+                total_training_time += time.time() - training_state.training_started_at
 
             alive_actors = sum(1 for a in actors if a is not None)
             start_again = False
             if ray_params.elastic_training:
-                if alive_actors < ray_params.num_actors - \
-                        ray_params.max_failed_actors:
+                if alive_actors < ray_params.num_actors - ray_params.max_failed_actors:
                     raise RuntimeError(
                         "A Ray actor died during training and the maximum "
                         "number of dead actors in elastic training was "
-                        "reached. Shutting down training.") from exc
+                        "reached. Shutting down training."
+                    ) from exc
 
                 # Do not start new actors before resuming training
                 # (this might still restart actors during training)
                 start_actor_ranks.clear()
 
-                if exc.__cause__ and isinstance(exc.__cause__,
-                                                RayXGBoostActorAvailable):
+                if exc.__cause__ and isinstance(
+                    exc.__cause__, RayXGBoostActorAvailable
+                ):
                     # New actor available, integrate into training loop
                     logger.info(
                         f"A new actor became available. Re-starting training "
                         f"from latest checkpoint with new actor. "
                         f"This will use {alive_actors} existing actors and "
                         f"start {len(start_actor_ranks)} new actors. "
-                        f"Sleeping for 10 seconds for cleanup.")
+                        f"Sleeping for 10 seconds for cleanup."
+                    )
                     tries -= 1  # This is deliberate so shouldn't count
                     start_again = True
 
                 elif tries + 1 <= max_actor_restarts:
-                    if exc.__cause__ and isinstance(exc.__cause__,
-                                                    RayXGBoostTrainingError):
+                    if exc.__cause__ and isinstance(
+                        exc.__cause__, RayXGBoostTrainingError
+                    ):
                         logger.warning(f"Caught exception: {exc.__cause__}")
                     logger.warning(
                         f"A Ray actor died during training. Trying to "
                         f"continue training on the remaining actors. "
                         f"This will use {alive_actors} existing actors and "
                         f"start {len(start_actor_ranks)} new actors. "
-                        f"Sleeping for 10 seconds for cleanup.")
+                        f"Sleeping for 10 seconds for cleanup."
+                    )
                     start_again = True
 
             elif tries + 1 <= max_actor_restarts:
-                if exc.__cause__ and isinstance(exc.__cause__,
-                                                RayXGBoostTrainingError):
+                if exc.__cause__ and isinstance(exc.__cause__, RayXGBoostTrainingError):
                     logger.warning(f"Caught exception: {exc.__cause__}")
                 logger.warning(
                     f"A Ray actor died during training. Trying to restart "
@@ -1322,7 +1414,8 @@ def train(
                     f"(restart {tries + 1} of {max_actor_restarts}). "
                     f"This will use {alive_actors} existing actors and start "
                     f"{len(start_actor_ranks)} new actors. "
-                    f"Sleeping for 10 seconds for cleanup.")
+                    f"Sleeping for 10 seconds for cleanup."
+                )
                 start_again = True
 
             if start_again:
@@ -1344,10 +1437,13 @@ def train(
     train_additional_results["training_time_s"] = total_training_time
     train_additional_results["total_time_s"] = total_time
 
-    logger.info("[RayLightGBM] Finished LightGBM training on training data "
-                "with total N={total_n:,} in {total_time_s:.2f} seconds "
-                "({training_time_s:.2f} pure LightGBM training time).".format(
-                    **train_additional_results))
+    logger.info(
+        "[RayLightGBM] Finished LightGBM training on training data "
+        "with total N={total_n:,} in {total_time_s:.2f} seconds "
+        "({training_time_s:.2f} pure LightGBM training time).".format(
+            **train_additional_results
+        )
+    )
 
     _shutdown(
         actors=actors,
@@ -1355,7 +1451,8 @@ def train(
         queue=queue,
         event=stop_event,
         placement_group=pg,
-        force=False)
+        force=False,
+    )
 
     if isinstance(evals_result, dict):
         evals_result.update(train_evals_result)
@@ -1365,8 +1462,9 @@ def train(
     return bst
 
 
-def _predict(model: LGBMModel, data: RayDMatrix, method: str,
-             ray_params: RayParams, **kwargs):
+def _predict(
+    model: LGBMModel, data: RayDMatrix, method: str, ray_params: RayParams, **kwargs
+):
     _assert_ray_support()
 
     if not ray.is_initialized():
@@ -1380,9 +1478,11 @@ def _predict(model: LGBMModel, data: RayDMatrix, method: str,
             model_factory=None,
             num_cpus_per_actor=ray_params.cpus_per_actor,
             num_gpus_per_actor=ray_params.gpus_per_actor
-            if ray_params.gpus_per_actor >= 0 else 0,
+            if ray_params.gpus_per_actor >= 0
+            else 0,
             resources_per_actor=ray_params.resources_per_actor,
-            distributed_callbacks=ray_params.distributed_callbacks)
+            distributed_callbacks=ray_params.distributed_callbacks,
+        )
         for i in range(ray_params.num_actors)
     ]
     logger.info(f"[RayLightGBM] Created {len(actors)} remote actors.")
@@ -1405,10 +1505,7 @@ def _predict(model: LGBMModel, data: RayDMatrix, method: str,
     logger.info("[RayLightGBM] Starting LightGBM prediction.")
 
     # Train
-    fut = [
-        actor.predict.remote(model_ref, data, method, **kwargs)
-        for actor in actors
-    ]
+    fut = [actor.predict.remote(model_ref, data, method, **kwargs) for actor in actors]
 
     try:
         actor_results = ray.get(fut)
@@ -1423,12 +1520,14 @@ def _predict(model: LGBMModel, data: RayDMatrix, method: str,
 
 
 @PublicAPI(stability="beta")
-def predict(model: Union[LGBMModel, Booster],
-            data: RayDMatrix,
-            method: str = "predict",
-            ray_params: Union[None, RayParams, Dict] = None,
-            _remote: Optional[bool] = None,
-            **kwargs) -> Optional[np.ndarray]:
+def predict(
+    model: Union[LGBMModel, Booster],
+    data: RayDMatrix,
+    method: str = "predict",
+    ray_params: Union[None, RayParams, Dict] = None,
+    _remote: Optional[bool] = None,
+    **kwargs,
+) -> Optional[np.ndarray]:
     """Distributed LightGBM predict via Ray.
 
     This function will connect to a Ray cluster, create ``num_actors``
@@ -1437,14 +1536,14 @@ def predict(model: Union[LGBMModel, Booster],
     returned.
 
     Args:
-        model (Union[LGBMModel, Booster]): Model or booster object to
+        model: Model or booster object to
             call for prediction.
-        data (RayDMatrix): Data object containing the prediction data.
-        method (str): Name of estimator method to use for prediction.
-        ray_params (Union[None, RayParams, Dict]): Parameters to configure
+        data: Data object containing the prediction data.
+        method: Name of estimator method to use for prediction.
+        ray_params: Parameters to configure
             Ray-specific behavior. See :class:`RayParams` for a list of valid
             configuration parameters.
-        _remote (bool): Whether to run the driver process in a remote
+        _remote: Whether to run the driver process in a remote
             function. This is enabled by default in Ray client mode.
         **kwargs: Keyword arguments will be passed to the local
             `xgb.predict()` calls.
@@ -1455,8 +1554,7 @@ def predict(model: Union[LGBMModel, Booster],
     os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
 
     if _remote is None:
-        _remote = _is_client_connected() and \
-                  not is_session_enabled()
+        _remote = _is_client_connected() and not is_session_enabled()
 
     if not ray.is_initialized():
         ray.init()
@@ -1464,14 +1562,19 @@ def predict(model: Union[LGBMModel, Booster],
     if _remote:
         return ray.get(
             ray.remote(num_cpus=0)(predict).remote(
-                model, data, method, ray_params, _remote=False, **kwargs))
+                model, data, method, ray_params, _remote=False, **kwargs
+            )
+        )
 
     _maybe_print_legacy_warning()
 
     ray_params = _validate_ray_params(ray_params)
 
-    max_actor_restarts = ray_params.max_actor_restarts \
-        if ray_params.max_actor_restarts >= 0 else float("inf")
+    max_actor_restarts = (
+        ray_params.max_actor_restarts
+        if ray_params.max_actor_restarts >= 0
+        else float("inf")
+    )
     _assert_ray_support()
 
     if not isinstance(data, RayDMatrix):
@@ -1479,24 +1582,25 @@ def predict(model: Union[LGBMModel, Booster],
             "The `data` argument passed to `predict()` is not a RayDMatrix, "
             "but of type {}. "
             "\nFIX THIS by instantiating a RayDMatrix first: "
-            "`data = RayDMatrix(data=data)`.".format(type(data)))
+            "`data = RayDMatrix(data=data)`.".format(type(data))
+        )
 
     tries = 0
     while tries <= max_actor_restarts:
         try:
-            return _predict(
-                model, data, method=method, ray_params=ray_params, **kwargs)
+            return _predict(model, data, method=method, ray_params=ray_params, **kwargs)
         except RayActorError:
             if tries + 1 <= max_actor_restarts:
                 logger.warning(
                     "A Ray actor died during prediction. Trying to restart "
                     "prediction from scratch. "
-                    "Sleeping for 10 seconds for cleanup.")
+                    "Sleeping for 10 seconds for cleanup."
+                )
                 time.sleep(10)
             else:
                 raise RuntimeError(
                     "A Ray actor died during prediction and the maximum "
-                    "number of retries ({}) is exhausted.".format(
-                        max_actor_restarts))
+                    "number of retries ({}) is exhausted.".format(max_actor_restarts)
+                )
             tries += 1
     return None

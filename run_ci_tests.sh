@@ -1,3 +1,5 @@
+#!/bin/bash
+
 TUNE=1
 
 for i in "$@"

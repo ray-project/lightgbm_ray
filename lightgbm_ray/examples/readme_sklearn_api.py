@@ -1,17 +1,19 @@
 def readme_sklearn_api():
-    from lightgbm_ray import RayLGBMClassifier, RayParams
     from sklearn.datasets import load_breast_cancer
     from sklearn.model_selection import train_test_split
+
+    from lightgbm_ray import RayLGBMClassifier, RayParams
 
     seed = 42
 
     X, y = load_breast_cancer(return_X_y=True)
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, train_size=0.25, random_state=42)
+        X, y, train_size=0.25, random_state=42
+    )
 
     clf = RayLGBMClassifier(
-        n_jobs=2,  # In LightGBM-Ray, n_jobs sets the number of actors
-        random_state=seed)
+        n_jobs=2, random_state=seed  # In LightGBM-Ray, n_jobs sets the number of actors
+    )
 
     # scikit-learn API will automatically convert the data
     # to RayDMatrix format as needed.

@@ -1,7 +1,5 @@
-flake8==3.7.7
-flake8-comprehensions
-flake8-quotes==2.0.0
-yapf==0.23.0
+packaging
+parameterized
 petastorm
 pytest
 pyarrow
@@ -9,9 +7,7 @@ ray[tune, data]
 scikit-learn
 modin
 git+https://github.com/ray-project/xgboost_ray.git
-parameterized
-packaging
 
-# workaround for now
+#workaround for now
 protobuf<4.0.0
 tensorboardX==2.2

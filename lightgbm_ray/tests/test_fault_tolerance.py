@@ -2,20 +2,18 @@ import os
 import shutil
 import tempfile
 import time
-from unittest.mock import patch, DEFAULT
-import lightgbm
-
-import numpy as np
 import unittest
+from unittest.mock import DEFAULT, patch
+
+import lightgbm
+import numpy as np
+import ray
 from lightgbm import LGBMModel
 from sklearn.utils import shuffle
-
-import ray
-
-from lightgbm_ray import train, RayDMatrix, RayParams
 from xgboost_ray.session import get_actor_rank, put_queue
-
 from xgboost_ray.tests.utils import flatten_obj
+
+from lightgbm_ray import RayDMatrix, RayParams, train
 
 
 def get_num_trees(model_or_booster):
@@ -24,25 +22,25 @@ def get_num_trees(model_or_booster):
     return model_or_booster.current_iteration()
 
 
-def _kill_callback(die_lock_file: str,
-                   actor_rank: int = 0,
-                   fail_iteration: int = 6):
+def _kill_callback(die_lock_file: str, actor_rank: int = 0, fail_iteration: int = 6):
     """Returns a callback to kill an actor process.
 
     Args:
-        die_lock_file (str): A file lock used to prevent race conditions
+        die_lock_file: A file lock used to prevent race conditions
             when killing the actor.
-        actor_rank (int): The rank of the actor to kill.
-        fail_iteration (int): The iteration after which the actor is killed.
+        actor_rank: The rank of the actor to kill.
+        fail_iteration: The iteration after which the actor is killed.
 
     """
 
     def _callback(env):
         if get_actor_rank() == actor_rank:
             put_queue((env.iteration, time.time()))
-        if get_actor_rank() == actor_rank and \
-                env.iteration == fail_iteration and \
-                not os.path.exists(die_lock_file):
+        if (
+            get_actor_rank() == actor_rank
+            and env.iteration == fail_iteration
+            and not os.path.exists(die_lock_file)
+        ):
 
             # Get PID
             pid = os.getpid()
@@ -62,9 +60,9 @@ def _checkpoint_callback(frequency: int = 1, before_iteration_=False):
     """Returns a callback to checkpoint a model.
 
     Args:
-        frequency (int): The interval at which checkpointing occurs. If
+        frequency: The interval at which checkpointing occurs. If
             frequency is set to n, checkpointing occurs every n epochs.
-        before_iteration_ (bool): If True, checkpoint before the iteration
+        before_iteration_: If True, checkpoint before the iteration
             begins. Else, checkpoint after the iteration ends.
 
     """
@@ -77,16 +75,14 @@ def _checkpoint_callback(frequency: int = 1, before_iteration_=False):
     return _callback
 
 
-def _fail_callback(die_lock_file: str,
-                   actor_rank: int = 0,
-                   fail_iteration: int = 6):
+def _fail_callback(die_lock_file: str, actor_rank: int = 0, fail_iteration: int = 6):
     """Returns a callback to cause an Xgboost actor to fail training.
 
     Args:
-        die_lock_file (str): A file lock used to prevent race conditions
+        die_lock_file: A file lock used to prevent race conditions
             when causing the actor to fail.
-        actor_rank (int): The rank of the actor to fail.
-        fail_iteration (int): The iteration after which the training for
+        actor_rank: The rank of the actor to fail.
+        fail_iteration: The iteration after which the training for
             the specified actor fails.
 
     """
@@ -94,14 +90,17 @@ def _fail_callback(die_lock_file: str,
     def _callback(env):
         if get_actor_rank() == actor_rank:
             put_queue((env.iteration, time.time()))
-        if get_actor_rank(
-        ) == actor_rank and env.iteration == fail_iteration \
-                and not os.path.exists(die_lock_file):
+        if (
+            get_actor_rank() == actor_rank
+            and env.iteration == fail_iteration
+            and not os.path.exists(die_lock_file)
+        ):
 
             with open(die_lock_file, "wt") as fp:
                 fp.write("")
             time.sleep(2)
             import sys
+
             print(f"Testing: Rank {get_actor_rank()} will now fail.")
             sys.exit(1)
 
@@ -116,12 +115,15 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
 
     def setUp(self):
         repeat = 64  # Repeat data a couple of times for stability
-        self.x = np.array([
-            [1, 0, 0, 0],  # Feature 0 -> Label 0
-            [0, 1, 0, 0],  # Feature 1 -> Label 1
-            [0, 0, 1, 1],  # Feature 2+3 -> Label 2
-            [0, 0, 1, 0],  # Feature 2+!3 -> Label 3
-        ] * repeat)
+        self.x = np.array(
+            [
+                [1, 0, 0, 0],  # Feature 0 -> Label 0
+                [0, 1, 0, 0],  # Feature 1 -> Label 1
+                [0, 0, 1, 1],  # Feature 2+3 -> Label 2
+                [0, 0, 1, 0],  # Feature 2+!3 -> Label 3
+            ]
+            * repeat
+        )
         self.y = np.array([0, 1, 2, 3] * repeat)
 
         self.x, self.y = shuffle(self.x, self.y, random_state=1)
@@ -177,8 +179,10 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
                 callbacks=[_kill_callback(self.die_lock_file)],
                 num_boost_round=50,
                 ray_params=RayParams(
-                    max_actor_restarts=1, num_actors=2, cpus_per_actor=2),
-                additional_results=additional_results)
+                    max_actor_restarts=1, num_actors=2, cpus_per_actor=2
+                ),
+                additional_results=additional_results,
+            )
 
         self.assertEqual(50, get_num_trees(bst))
 
@@ -205,7 +209,8 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
                 RayDMatrix(self.x, self.y),
                 callbacks=[_kill_callback(self.die_lock_file)],
                 num_boost_round=20,
-                ray_params=RayParams(max_actor_restarts=0, num_actors=2))
+                ray_params=RayParams(max_actor_restarts=0, num_actors=2),
+            )
 
     def testCheckpointContinuationValidity(self):
         """Test that checkpoints are stored and loaded correctly"""
@@ -216,12 +221,11 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
         train(
             self.params,
             RayDMatrix(self.x, self.y),
-            callbacks=[
-                _checkpoint_callback(frequency=1, before_iteration_=False)
-            ],
+            callbacks=[_checkpoint_callback(frequency=1, before_iteration_=False)],
             num_boost_round=2,
             ray_params=RayParams(num_actors=2, cpus_per_actor=2),
-            additional_results=res_1)
+            additional_results=res_1,
+        )
         last_checkpoint_1 = res_1["callback_returns"][0][-1]
 
         lc1 = lightgbm.Booster(model_str=last_checkpoint_1)
@@ -233,12 +237,13 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
             RayDMatrix(self.x, self.y),
             callbacks=[
                 _checkpoint_callback(frequency=1, before_iteration_=True),
-                _checkpoint_callback(frequency=1, before_iteration_=False)
+                _checkpoint_callback(frequency=1, before_iteration_=False),
             ],
             num_boost_round=4,
             ray_params=RayParams(num_actors=2, cpus_per_actor=2),
             additional_results=res_2,
-            init_model=lc1)
+            init_model=lc1,
+        )
         first_checkpoint_2 = res_2["callback_returns"][0][0]
         last_checkpoint_2 = res_2["callback_returns"][0][-1]
 
@@ -252,8 +257,7 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
 
         # Training should have proceeded for the last checkpoint,
         # so trees should not be equal
-        self.assertNotEqual(fcp_bst.model_to_string(),
-                            lcp_bst.model_to_string())
+        self.assertNotEqual(fcp_bst.model_to_string(), lcp_bst.model_to_string())
 
     def testSameResultWithAndWithoutError(self):
         """Get the same model with and without errors during training."""
@@ -265,25 +269,25 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
             self.params,
             RayDMatrix(self.x, self.y),
             num_boost_round=10,
-            ray_params=RayParams(
-                max_actor_restarts=0, num_actors=2, cpus_per_actor=2))
+            ray_params=RayParams(max_actor_restarts=0, num_actors=2, cpus_per_actor=2),
+        )
 
         print("test part 1")
         bst_2part_1 = train(
             self.params,
             RayDMatrix(self.x, self.y),
             num_boost_round=5,
-            ray_params=RayParams(
-                max_actor_restarts=0, num_actors=2, cpus_per_actor=2))
+            ray_params=RayParams(max_actor_restarts=0, num_actors=2, cpus_per_actor=2),
+        )
 
         print("test part 2")
         bst_2part_2 = train(
             self.params,
             RayDMatrix(self.x, self.y),
             num_boost_round=5,
-            ray_params=RayParams(
-                max_actor_restarts=0, num_actors=2, cpus_per_actor=2),
-            init_model=bst_2part_1)
+            ray_params=RayParams(max_actor_restarts=0, num_actors=2, cpus_per_actor=2),
+            init_model=bst_2part_1,
+        )
 
         print("test error")
         res_error = {}
@@ -296,23 +300,27 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
                 max_actor_restarts=1,
                 num_actors=2,
                 checkpoint_frequency=5,
-                cpus_per_actor=2),
-            additional_results=res_error)
+                cpus_per_actor=2,
+            ),
+            additional_results=res_error,
+        )
 
-        self.assertEqual(bst_error.booster_.current_iteration(),
-                         bst_noerror.booster_.current_iteration())
-        self.assertEqual(bst_2part_2.booster_.current_iteration(),
-                         bst_noerror.booster_.current_iteration())
+        self.assertEqual(
+            bst_error.booster_.current_iteration(),
+            bst_noerror.booster_.current_iteration(),
+        )
+        self.assertEqual(
+            bst_2part_2.booster_.current_iteration(),
+            bst_noerror.booster_.current_iteration(),
+        )
 
         flat_noerror = flatten_obj({"tree": bst_noerror.booster_.dump_model()})
         flat_error = flatten_obj({"tree": bst_error.booster_.dump_model()})
         flat_2part = flatten_obj({"tree": bst_2part_2.booster_.dump_model()})
 
         for key in flat_noerror:
-            self.assertAlmostEqual(
-                flat_noerror[key], flat_error[key], places=4)
-            self.assertAlmostEqual(
-                flat_noerror[key], flat_2part[key], places=4)
+            self.assertAlmostEqual(flat_noerror[key], flat_error[key], places=4)
+            self.assertAlmostEqual(flat_noerror[key], flat_2part[key], places=4)
 
         # We fail at iteration 7, but checkpoints are saved at iteration 5
         # Thus we have two additional returns here.
@@ -321,6 +329,8 @@ class LightGBMRayFaultToleranceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
+
     sys.exit(pytest.main(["-v", __file__]))
