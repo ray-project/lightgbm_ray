@@ -10,9 +10,11 @@ import numpy as np
 
 def main():
     if not os.path.exists("simple.lgbm"):
-        raise ValueError("Model file not found: `simple.lgbm`"
-                         "\nFIX THIS by running `python `simple.py` first to "
-                         "train the model.")
+        raise ValueError(
+            "Model file not found: `simple.lgbm`"
+            "\nFIX THIS by running `python `simple.py` first to "
+            "train the model."
+        )
 
     # Load dataset
     data, labels = datasets.load_breast_cancer(return_X_y=True)

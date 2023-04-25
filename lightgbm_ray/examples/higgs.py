@@ -7,8 +7,10 @@ FILENAME_CSV = "HIGGS.csv.gz"
 
 
 def download_higgs(target_file):
-    url = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
-          "00280/HIGGS.csv.gz"
+    url = (
+        "https://archive.ics.uci.edu/ml/machine-learning-databases/"
+        "00280/HIGGS.csv.gz"
+    )
 
     try:
         import urllib.request
@@ -16,7 +18,8 @@ def download_higgs(target_file):
         raise ValueError(
             f"Automatic downloading of the HIGGS dataset requires `urllib`."
             f"\nFIX THIS by running `pip install urllib` or manually "
-            f"downloading the dataset from {url}.") from e
+            f"downloading the dataset from {url}."
+        ) from e
 
     print(f"Downloading HIGGS dataset to {target_file}")
     urllib.request.urlretrieve(url, target_file)
@@ -30,16 +33,14 @@ def main():
     # https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz
 
     if not os.path.exists(FILENAME_CSV):
-        assert download_higgs(FILENAME_CSV), \
-            "Downloading of HIGGS dataset failed."
+        assert download_higgs(FILENAME_CSV), "Downloading of HIGGS dataset failed."
         print("HIGGS dataset downloaded.")
     else:
         print("HIGGS dataset found locally.")
 
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
 
-    dtrain = RayDMatrix(
-        os.path.abspath(FILENAME_CSV), label="label", names=colnames)
+    dtrain = RayDMatrix(os.path.abspath(FILENAME_CSV), label="label", names=colnames)
 
     config = {
         "objective": "binary",
@@ -55,17 +56,20 @@ def main():
         evals_result=evals_result,
         ray_params=RayParams(max_actor_restarts=1, num_actors=2),
         num_boost_round=100,
-        evals=[(dtrain, "train")])
+        evals=[(dtrain, "train")],
+    )
     taken = time.time() - start
     print(f"TRAIN TIME TAKEN: {taken:.2f} seconds")
 
     bst.booster_.save_model("higgs.lgbm")
-    print("Final training error: {:.4f}".format(
-        evals_result["train"]["binary_error"][-1]))
+    print(
+        "Final training error: {:.4f}".format(evals_result["train"]["binary_error"][-1])
+    )
 
 
 if __name__ == "__main__":
     import ray
+
     ray.init()
 
     start = time.time()

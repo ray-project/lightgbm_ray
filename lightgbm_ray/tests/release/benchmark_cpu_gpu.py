@@ -6,24 +6,31 @@ import shutil
 import time
 
 import ray
-from lightgbm_ray import train, RayDMatrix, RayFileType, \
-    RayDeviceQuantileDMatrix, RayParams
+from lightgbm_ray import (
+    train,
+    RayDMatrix,
+    RayFileType,
+    RayDeviceQuantileDMatrix,
+    RayParams,
+)
 from xgboost_ray.tests.utils import create_parquet_in_tempdir
 
 if "OMP_NUM_THREADS" in os.environ:
     del os.environ["OMP_NUM_THREADS"]
 
 
-def train_ray(path,
-              num_workers,
-              num_boost_rounds,
-              num_files=0,
-              regression=False,
-              use_gpu=False,
-              smoke_test=False,
-              ray_params=None,
-              lightgbm_params=None,
-              **kwargs):
+def train_ray(
+    path,
+    num_workers,
+    num_boost_rounds,
+    num_files=0,
+    regression=False,
+    use_gpu=False,
+    smoke_test=False,
+    ray_params=None,
+    lightgbm_params=None,
+    **kwargs,
+):
     if num_files:
         files = sorted(glob.glob(f"{path}/**/*.parquet"))
         while num_files > len(files):
@@ -38,28 +45,34 @@ def train_ray(path,
             num_actors=num_workers,
             label="labels",
             ignore=["partition"],
-            filetype=RayFileType.PARQUET)
+            filetype=RayFileType.PARQUET,
+        )
     else:
         dtrain = RayDMatrix(
             path,
             num_actors=num_workers,
             label="labels",
             ignore=["partition"],
-            filetype=RayFileType.PARQUET)
+            filetype=RayFileType.PARQUET,
+        )
 
     config = lightgbm_params or {"device": "cpu" if not use_gpu else "gpu"}
     if not regression:
         # Classification
-        config.update({
-            "objective": "binary",
-            "metric": ["binary_logloss", "binary_error"],
-        })
+        config.update(
+            {
+                "objective": "binary",
+                "metric": ["binary_logloss", "binary_error"],
+            }
+        )
     else:
         # Regression
-        config.update({
-            "objective": "regression",
-            "metric": ["l2", "rmse"],
-        })
+        config.update(
+            {
+                "objective": "regression",
+                "metric": ["l2", "rmse"],
+            }
+        )
 
     start = time.time()
     evals_result = {}
@@ -68,20 +81,25 @@ def train_ray(path,
         dtrain,
         evals_result=evals_result,
         num_boost_round=num_boost_rounds,
-        ray_params=ray_params or RayParams(
+        ray_params=ray_params
+        or RayParams(
             max_actor_restarts=2,
             num_actors=num_workers,
             cpus_per_actor=4 if not smoke_test else 2,
-            gpus_per_actor=0 if not use_gpu else 1),
+            gpus_per_actor=0 if not use_gpu else 1,
+        ),
         evals=[(dtrain, "train")],
-        **kwargs)
+        **kwargs,
+    )
     taken = time.time() - start
     print(f"TRAIN TIME TAKEN: {taken:.2f} seconds")
 
-    bst.booster_.save_model(
-        "benchmark_{}.lgbm".format("cpu" if not use_gpu else "gpu"))
-    print("Final training error: {:.4f}".format(
-        evals_result["train"]["binary_error" if not regression else "l2"][-1]))
+    bst.booster_.save_model("benchmark_{}.lgbm".format("cpu" if not use_gpu else "gpu"))
+    print(
+        "Final training error: {:.4f}".format(
+            evals_result["train"]["binary_error" if not regression else "l2"][-1]
+        )
+    )
     return bst, taken
 
 
@@ -93,16 +111,18 @@ if __name__ == "__main__":
     parser.add_argument("num_files", type=int, help="num files")
 
     parser.add_argument(
-        "--file", default="/data/parted.parquet", type=str, help="data file")
+        "--file", default="/data/parted.parquet", type=str, help="data file"
+    )
 
     parser.add_argument(
-        "--regression", action="store_true", default=False, help="regression")
+        "--regression", action="store_true", default=False, help="regression"
+    )
+
+    parser.add_argument("--gpu", action="store_true", default=False, help="gpu")
 
     parser.add_argument(
-        "--gpu", action="store_true", default=False, help="gpu")
-
-    parser.add_argument(
-        "--smoke-test", action="store_true", default=False, help="smoke test")
+        "--smoke-test", action="store_true", default=False, help="smoke test"
+    )
 
     args = parser.parse_args()
 
@@ -118,14 +138,16 @@ if __name__ == "__main__":
             num_rows=args.num_workers * 500,
             num_features=4,
             num_classes=2,
-            num_partitions=args.num_workers * 10)
+            num_partitions=args.num_workers * 10,
+        )
         use_gpu = False
     else:
         path = args.file
         if not os.path.exists(path):
             raise ValueError(
                 f"Benchmarking data not found: {path}."
-                f"\nFIX THIS by running `python create_test_data.py` first.")
+                f"\nFIX THIS by running `python create_test_data.py` first."
+            )
 
     init_start = time.time()
     if args.smoke_test:
@@ -142,21 +164,31 @@ if __name__ == "__main__":
         num_files=num_files,
         regression=args.regression,
         use_gpu=use_gpu,
-        smoke_test=args.smoke_test)
+        smoke_test=args.smoke_test,
+    )
     full_taken = time.time() - full_start
-    print(f"TOTAL TIME TAKEN: {full_taken:.2f} seconds "
-          f"({init_taken:.2f} for init)")
+    print(f"TOTAL TIME TAKEN: {full_taken:.2f} seconds " f"({init_taken:.2f} for init)")
 
     if args.smoke_test:
         shutil.rmtree(temp_dir, ignore_errors=True)
     else:
         with open("res.csv", "at") as fp:
-            fp.writelines([
-                ",".join([
-                    str(e) for e in [
-                        num_workers, num_files,
-                        int(use_gpu), num_boost_rounds, init_taken, full_taken,
-                        train_taken
-                    ]
-                ]) + "\n"
-            ])
+            fp.writelines(
+                [
+                    ",".join(
+                        [
+                            str(e)
+                            for e in [
+                                num_workers,
+                                num_files,
+                                int(use_gpu),
+                                num_boost_rounds,
+                                init_taken,
+                                full_taken,
+                                train_taken,
+                            ]
+                        ]
+                    )
+                    + "\n"
+                ]
+            )

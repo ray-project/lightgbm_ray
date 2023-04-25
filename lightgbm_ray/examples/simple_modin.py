@@ -12,8 +12,10 @@ from sklearn.utils import shuffle
 
 def main(cpus_per_actor, num_actors):
     if not MODIN_INSTALLED:
-        print("Modin is not installed or installed in a version that is not "
-              "compatible with lightgbm_ray (< 0.9.0).")
+        print(
+            "Modin is not installed or installed in a version that is not "
+            "compatible with lightgbm_ray (< 0.9.0)."
+        )
         return
 
     # Import modin after initializing Ray
@@ -60,40 +62,43 @@ def main(cpus_per_actor, num_actors):
             max_actor_restarts=0,
             gpus_per_actor=0,
             cpus_per_actor=cpus_per_actor,
-            num_actors=num_actors),
+            num_actors=num_actors,
+        ),
         verbose_eval=False,
-        num_boost_round=10)
+        num_boost_round=10,
+    )
 
     model_path = "modin.lgbm"
     bst.booster_.save_model(model_path)
-    print("Final training error: {:.4f}".format(
-        evals_result["train"]["binary_error"][-1]))
+    print(
+        "Final training error: {:.4f}".format(evals_result["train"]["binary_error"][-1])
+    )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--server-address",
         required=False,
         type=str,
-        help="Address of the remote server if using Ray Client.")
+        help="Address of the remote server if using Ray Client.",
+    )
     parser.add_argument(
         "--cpus-per-actor",
         type=int,
         default=2,
-        help="Sets number of CPUs per lightgbm training worker.")
+        help="Sets number of CPUs per lightgbm training worker.",
+    )
     parser.add_argument(
         "--num-actors",
         type=int,
         default=2,
-        help="Sets number of lightgbm workers to use.")
-    parser.add_argument(
-        "--smoke-test", action="store_true", default=False, help="gpu")
+        help="Sets number of lightgbm workers to use.",
+    )
+    parser.add_argument("--smoke-test", action="store_true", default=False, help="gpu")
 
     args, _ = parser.parse_known_args()
 

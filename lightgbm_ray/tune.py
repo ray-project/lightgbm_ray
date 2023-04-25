@@ -16,9 +16,10 @@ try:
     from ray import tune
     from ray.tune import is_session_enabled
     from ray.tune.integration.lightgbm import (
-        TuneReportCallback as OrigTuneReportCallback, _TuneCheckpointCallback
-        as _OrigTuneCheckpointCallback, TuneReportCheckpointCallback as
-        OrigTuneReportCheckpointCallback)
+        TuneReportCallback as OrigTuneReportCallback,
+        _TuneCheckpointCallback as _OrigTuneCheckpointCallback,
+        TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback,
+    )
 
     TUNE_INSTALLED = True
 except ImportError:
@@ -56,16 +57,19 @@ if TUNE_INSTALLED:
             report_dict = self._get_report_dict(eval_result)
             put_queue(lambda: tune.report(**report_dict))
 
-    class _TuneCheckpointCallback(_TuneLGBMRank0Mixin,
-                                  _OrigTuneCheckpointCallback):
+    class _TuneCheckpointCallback(_TuneLGBMRank0Mixin, _OrigTuneCheckpointCallback):
         def __call__(self, env: CallbackEnv) -> None:
             if not self.is_rank_0:
                 return
-            put_queue(lambda: self._create_checkpoint(
-                env.model, env.iteration, self._filename, self._frequency))
+            put_queue(
+                lambda: self._create_checkpoint(
+                    env.model, env.iteration, self._filename, self._frequency
+                )
+            )
 
-    class TuneReportCheckpointCallback(_TuneLGBMRank0Mixin,
-                                       OrigTuneReportCheckpointCallback):
+    class TuneReportCheckpointCallback(
+        _TuneLGBMRank0Mixin, OrigTuneReportCheckpointCallback
+    ):
         _checkpoint_callback_cls = _TuneCheckpointCallback
         _report_callback_cls = TuneReportCallback
 
@@ -91,13 +95,14 @@ def _try_add_tune_callback(kwargs: Dict):
         new_callbacks = []
         has_tune_callback = False
 
-        REPLACE_MSG = "Replaced `{orig}` with `{target}`. If you want to " \
-                      "avoid this warning, pass `{target}` as a callback " \
-                      "directly in your calls to `lightgbm_ray.train()`."
+        REPLACE_MSG = (
+            "Replaced `{orig}` with `{target}`. If you want to "
+            "avoid this warning, pass `{target}` as a callback "
+            "directly in your calls to `lightgbm_ray.train()`."
+        )
 
         for cb in callbacks:
-            if isinstance(cb,
-                          (TuneReportCallback, TuneReportCheckpointCallback)):
+            if isinstance(cb, (TuneReportCallback, TuneReportCheckpointCallback)):
                 has_tune_callback = True
                 new_callbacks.append(cb)
             elif isinstance(cb, OrigTuneReportCallback):
@@ -105,23 +110,25 @@ def _try_add_tune_callback(kwargs: Dict):
                 new_callbacks.append(replace_cb)
                 logging.warning(
                     REPLACE_MSG.format(
-                        orig=(
-                            "ray.tune.integration.lightgbm.TuneReportCallback"
-                        ),
-                        target="lightgbm_ray.tune.TuneReportCallback"))
+                        orig=("ray.tune.integration.lightgbm.TuneReportCallback"),
+                        target="lightgbm_ray.tune.TuneReportCallback",
+                    )
+                )
                 has_tune_callback = True
             elif isinstance(cb, OrigTuneReportCheckpointCallback):
                 replace_cb = TuneReportCheckpointCallback(
                     metrics=cb._report._metrics,
                     filename=cb._checkpoint._filename,
-                    frequency=cb._checkpoint._frequency)
+                    frequency=cb._checkpoint._frequency,
+                )
                 new_callbacks.append(replace_cb)
                 logging.warning(
                     REPLACE_MSG.format(
                         orig="ray.tune.integration.lightgbm."
                         "TuneReportCheckpointCallback",
-                        target="lightgbm_ray.tune.TuneReportCheckpointCallback"
-                    ))
+                        target="lightgbm_ray.tune.TuneReportCheckpointCallback",
+                    )
+                )
                 has_tune_callback = True
             else:
                 new_callbacks.append(cb)

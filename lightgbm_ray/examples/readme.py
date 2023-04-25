@@ -19,11 +19,13 @@ def readme_simple():
         valid_sets=[train_set],
         valid_names=["train"],
         verbose_eval=False,
-        ray_params=RayParams(num_actors=2, cpus_per_actor=2))
+        ray_params=RayParams(num_actors=2, cpus_per_actor=2),
+    )
 
     bst.booster_.save_model("model.lgbm")
-    print("Final training error: {:.4f}".format(
-        evals_result["train"]["binary_error"][-1]))
+    print(
+        "Final training error: {:.4f}".format(evals_result["train"]["binary_error"][-1])
+    )
 
 
 def readme_predict():
@@ -48,8 +50,7 @@ def readme_tune():
     num_actors = 2
     num_cpus_per_actor = 2
 
-    ray_params = RayParams(
-        num_actors=num_actors, cpus_per_actor=num_cpus_per_actor)
+    ray_params = RayParams(num_actors=num_actors, cpus_per_actor=num_cpus_per_actor)
 
     def train_model(config):
         train_x, train_y = load_breast_cancer(return_X_y=True)
@@ -63,7 +64,8 @@ def readme_tune():
             valid_sets=[train_set],
             valid_names=["train"],
             verbose_eval=False,
-            ray_params=ray_params)
+            ray_params=ray_params,
+        )
         bst.booster_.save_model("model.lgbm")
 
     from ray import tune
@@ -74,7 +76,7 @@ def readme_tune():
         "metric": ["binary_logloss", "binary_error"],
         "eta": tune.loguniform(1e-4, 1e-1),
         "subsample": tune.uniform(0.5, 1.0),
-        "max_depth": tune.randint(1, 9)
+        "max_depth": tune.randint(1, 9),
     }
 
     # Make sure to use the `get_tune_resources` method to set the `resources_per_trial`
@@ -84,7 +86,8 @@ def readme_tune():
         metric="train-binary_error",
         mode="min",
         num_samples=4,
-        resources_per_trial=ray_params.get_tune_resources())
+        resources_per_trial=ray_params.get_tune_resources(),
+    )
     print("Best hyperparameters", analysis.best_config)
 
 

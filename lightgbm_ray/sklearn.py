@@ -29,14 +29,17 @@
 # License:
 # https://github.com/microsoft/LightGBM/blob/c3b9363d02564625332583e166e3ab3135f436e3/LICENSE
 
-from typing import (Optional, Dict, Union, Type, Any, List, Callable)
+from typing import Optional, Dict, Union, Type, Any, List, Callable
 
 from ray.util.annotations import PublicAPI
 
 from lightgbm import LGBMModel, LGBMClassifier, LGBMRegressor  # LGBMRanker
 from lightgbm.basic import _choose_param_value, _ConfigAliases
-from xgboost_ray.sklearn import (_wrap_evaluation_matrices,
-                                 _check_if_params_are_ray_dmatrix, RayXGBMixin)
+from xgboost_ray.sklearn import (
+    _wrap_evaluation_matrices,
+    _check_if_params_are_ray_dmatrix,
+    RayXGBMixin,
+)
 from lightgbm_ray.main import train, predict, RayDMatrix, RayParams
 
 import warnings
@@ -72,28 +75,34 @@ def _treat_estimator_doc(doc: str) -> str:
     """Helper function to make nececssary changes in estimator docstrings"""
     doc = doc.replace(*_N_JOBS_DOC_REPLACE).replace(
         "Construct a gradient boosting model.",
-        "Construct a gradient boosting model distributed on Ray.")
+        "Construct a gradient boosting model distributed on Ray.",
+    )
     return doc
 
 
 def _treat_method_doc(doc: str, insert_before: str) -> str:
     """Helper function to make changes in estimator method docstrings"""
-    doc = doc[:doc.find(insert_before)] + _RAY_PARAMS_DOC + doc[doc.find(
-        insert_before):]
+    doc = (
+        doc[: doc.find(insert_before)]
+        + _RAY_PARAMS_DOC
+        + doc[doc.find(insert_before) :]
+    )
     return doc
 
 
 class _RayLGBMModel(RayXGBMixin):
     def _ray_get_wrap_evaluation_matrices_compat_kwargs(
-            self, label_transform=None) -> dict:
+        self, label_transform=None
+    ) -> dict:
         self.enable_categorical = False
         self.feature_types = None
         return super()._ray_get_wrap_evaluation_matrices_compat_kwargs(
-            label_transform=label_transform)
+            label_transform=label_transform
+        )
 
     def _ray_set_ray_params_n_jobs(
-            self, ray_params: Optional[Union[RayParams, dict]],
-            n_jobs: Optional[int]) -> RayParams:
+        self, ray_params: Optional[Union[RayParams, dict]], n_jobs: Optional[int]
+    ) -> RayParams:
         """Helper function to set num_actors in ray_params if not
         set by the user"""
         if ray_params is None:
@@ -101,43 +110,46 @@ class _RayLGBMModel(RayXGBMixin):
                 n_jobs = 1
             ray_params = RayParams(num_actors=n_jobs)
         elif n_jobs is not None:
-            warnings.warn("`ray_params` is not `None` and will override "
-                          "the `n_jobs` attribute.")
+            warnings.warn(
+                "`ray_params` is not `None` and will override "
+                "the `n_jobs` attribute."
+            )
         return ray_params
 
-    def _ray_fit(self,
-                 model_factory: Type[LGBMModel],
-                 X,
-                 y,
-                 sample_weight=None,
-                 init_score=None,
-                 group=None,
-                 eval_set=None,
-                 eval_names: Optional[List[str]] = None,
-                 eval_sample_weight=None,
-                 eval_init_score=None,
-                 eval_group=None,
-                 eval_metric: Optional[Union[Callable, str, List[Union[
-                     Callable, str]]]] = None,
-                 ray_params: Union[None, RayParams, Dict] = None,
-                 _remote: Optional[bool] = None,
-                 ray_dmatrix_params: Optional[Dict] = None,
-                 **kwargs: Any) -> "_RayLGBMModel":
+    def _ray_fit(
+        self,
+        model_factory: Type[LGBMModel],
+        X,
+        y,
+        sample_weight=None,
+        init_score=None,
+        group=None,
+        eval_set=None,
+        eval_names: Optional[List[str]] = None,
+        eval_sample_weight=None,
+        eval_init_score=None,
+        eval_group=None,
+        eval_metric: Optional[Union[Callable, str, List[Union[Callable, str]]]] = None,
+        ray_params: Union[None, RayParams, Dict] = None,
+        _remote: Optional[bool] = None,
+        ray_dmatrix_params: Optional[Dict] = None,
+        **kwargs: Any,
+    ) -> "_RayLGBMModel":
 
         params = self.get_params(True)
 
-        ray_params = self._ray_set_ray_params_n_jobs(ray_params,
-                                                     params["n_jobs"])
+        ray_params = self._ray_set_ray_params_n_jobs(ray_params, params["n_jobs"])
 
         params = _choose_param_value(
-            main_param_name="n_estimators", params=params, default_value=100)
+            main_param_name="n_estimators", params=params, default_value=100
+        )
 
         num_boosting_round = params.pop("n_estimators")
         ray_dmatrix_params = ray_dmatrix_params or {}
 
         train_dmatrix, evals = _check_if_params_are_ray_dmatrix(
-            X, sample_weight, init_score, eval_set, eval_sample_weight,
-            eval_init_score)
+            X, sample_weight, init_score, eval_set, eval_sample_weight, eval_init_score
+        )
 
         if train_dmatrix is None:
             train_dmatrix, evals = _wrap_evaluation_matrices(
@@ -155,11 +167,14 @@ class _RayLGBMModel(RayXGBMixin):
                 eval_group=eval_group,
                 eval_qid=None,
                 # changed in xgboost-ray:
-                create_dmatrix=lambda **kwargs: RayDMatrix(**{
-                    **kwargs,
-                    **ray_dmatrix_params,
-                }),
-                **self._ray_get_wrap_evaluation_matrices_compat_kwargs())
+                create_dmatrix=lambda **kwargs: RayDMatrix(
+                    **{
+                        **kwargs,
+                        **ray_dmatrix_params,
+                    }
+                ),
+                **self._ray_get_wrap_evaluation_matrices_compat_kwargs(),
+            )
 
         eval_names = eval_names or []
 
@@ -184,25 +199,27 @@ class _RayLGBMModel(RayXGBMixin):
             eval_metric=eval_metric,
             ray_params=ray_params,
             _remote=_remote,
-            **kwargs)
+            **kwargs,
+        )
 
         self.set_params(**model.get_params())
         self._lgb_ray_copy_extra_params(model, self)
 
         return self
 
-    def _ray_predict(self,
-                     X,
-                     model_factory: Type[LGBMModel],
-                     *,
-                     method: str = "predict",
-                     ray_params: Union[None, RayParams, Dict] = None,
-                     _remote: Optional[bool] = None,
-                     ray_dmatrix_params: Optional[Dict],
-                     **kwargs):
+    def _ray_predict(
+        self,
+        X,
+        model_factory: Type[LGBMModel],
+        *,
+        method: str = "predict",
+        ray_params: Union[None, RayParams, Dict] = None,
+        _remote: Optional[bool] = None,
+        ray_dmatrix_params: Optional[Dict],
+        **kwargs,
+    ):
         params = self.get_params(True)
-        ray_params = self._ray_set_ray_params_n_jobs(ray_params,
-                                                     params["n_jobs"])
+        ray_params = self._ray_set_ray_params_n_jobs(ray_params, params["n_jobs"])
 
         ray_dmatrix_params = ray_dmatrix_params or {}
         if not isinstance(X, RayDMatrix):
@@ -226,8 +243,9 @@ class _RayLGBMModel(RayXGBMixin):
 
     @staticmethod
     def _lgb_ray_copy_extra_params(
-            source: Union["_RayLGBMModel", LGBMModel],
-            dest: Union["_RayLGBMModel", LGBMModel]) -> None:
+        source: Union["_RayLGBMModel", LGBMModel],
+        dest: Union["_RayLGBMModel", LGBMModel],
+    ) -> None:
         params = source.get_params()
         attributes = source.__dict__
         extra_param_names = set(attributes.keys()).difference(params.keys())
@@ -237,22 +255,23 @@ class _RayLGBMModel(RayXGBMixin):
 
 @PublicAPI(stability="beta")
 class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
-    def fit(self,
-            X,
-            y,
-            sample_weight=None,
-            init_score=None,
-            eval_set=None,
-            eval_names: Optional[List[str]] = None,
-            eval_sample_weight=None,
-            eval_class_weight: Optional[List[Union[dict, str]]] = None,
-            eval_init_score=None,
-            eval_metric: Optional[Union[Callable, str, List[Union[
-                Callable, str]]]] = None,
-            ray_params: Union[None, RayParams, Dict] = None,
-            _remote: Optional[bool] = None,
-            ray_dmatrix_params: Optional[Dict] = None,
-            **kwargs: Any) -> "RayLGBMClassifier":
+    def fit(
+        self,
+        X,
+        y,
+        sample_weight=None,
+        init_score=None,
+        eval_set=None,
+        eval_names: Optional[List[str]] = None,
+        eval_sample_weight=None,
+        eval_class_weight: Optional[List[Union[dict, str]]] = None,
+        eval_init_score=None,
+        eval_metric: Optional[Union[Callable, str, List[Union[Callable, str]]]] = None,
+        ray_params: Union[None, RayParams, Dict] = None,
+        _remote: Optional[bool] = None,
+        ray_dmatrix_params: Optional[Dict] = None,
+        **kwargs: Any,
+    ) -> "RayLGBMClassifier":
         return self._ray_fit(
             model_factory=LGBMClassifier,
             X=X,
@@ -268,18 +287,20 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             ray_params=ray_params,
             _remote=_remote,
             ray_dmatrix_params=ray_dmatrix_params,
-            **kwargs)
+            **kwargs,
+        )
 
-    fit.__doc__ = _treat_method_doc(LGBMClassifier.fit.__doc__,
-                                    "\n\n    Returns")
+    fit.__doc__ = _treat_method_doc(LGBMClassifier.fit.__doc__, "\n\n    Returns")
 
-    def predict_proba(self,
-                      X,
-                      *,
-                      ray_params: Union[None, RayParams, Dict] = None,
-                      _remote: Optional[bool] = None,
-                      ray_dmatrix_params: Optional[Dict] = None,
-                      **kwargs):
+    def predict_proba(
+        self,
+        X,
+        *,
+        ray_params: Union[None, RayParams, Dict] = None,
+        _remote: Optional[bool] = None,
+        ray_dmatrix_params: Optional[Dict] = None,
+        **kwargs,
+    ):
         return self._ray_predict(
             X,
             model_factory=LGBMClassifier,
@@ -287,18 +308,22 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             ray_params=ray_params,
             _remote=_remote,
             ray_dmatrix_params=ray_dmatrix_params,
-            **kwargs)
+            **kwargs,
+        )
 
     predict_proba.__doc__ = _treat_method_doc(
-        LGBMClassifier.predict_proba.__doc__, "\n    **kwargs")
+        LGBMClassifier.predict_proba.__doc__, "\n    **kwargs"
+    )
 
-    def predict(self,
-                X,
-                *,
-                ray_params: Union[None, RayParams, Dict] = None,
-                _remote: Optional[bool] = None,
-                ray_dmatrix_params: Optional[Dict] = None,
-                **kwargs):
+    def predict(
+        self,
+        X,
+        *,
+        ray_params: Union[None, RayParams, Dict] = None,
+        _remote: Optional[bool] = None,
+        ray_dmatrix_params: Optional[Dict] = None,
+        **kwargs,
+    ):
         return self._ray_predict(
             X,
             model_factory=LGBMClassifier,
@@ -306,10 +331,12 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
             ray_params=ray_params,
             _remote=_remote,
             ray_dmatrix_params=ray_dmatrix_params,
-            **kwargs)
+            **kwargs,
+        )
 
-    predict.__doc__ = _treat_method_doc(LGBMClassifier.predict.__doc__,
-                                        "\n    **kwargs")
+    predict.__doc__ = _treat_method_doc(
+        LGBMClassifier.predict.__doc__, "\n    **kwargs"
+    )
 
     def to_local(self) -> LGBMClassifier:
         """Create regular version of lightgbm.LGBMClassifier from the
@@ -324,26 +351,28 @@ class RayLGBMClassifier(LGBMClassifier, _RayLGBMModel):
 
 
 RayLGBMClassifier.__init__.__doc__ = _treat_estimator_doc(
-    LGBMClassifier.__init__.__doc__)
+    LGBMClassifier.__init__.__doc__
+)
 
 
 @PublicAPI(stability="beta")
 class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
-    def fit(self,
-            X,
-            y,
-            sample_weight=None,
-            init_score=None,
-            eval_set=None,
-            eval_names: Optional[List[str]] = None,
-            eval_sample_weight=None,
-            eval_init_score=None,
-            eval_metric: Optional[Union[Callable, str, List[Union[
-                Callable, str]]]] = None,
-            ray_params: Union[None, RayParams, Dict] = None,
-            _remote: Optional[bool] = None,
-            ray_dmatrix_params: Optional[Dict] = None,
-            **kwargs: Any) -> "RayLGBMRegressor":
+    def fit(
+        self,
+        X,
+        y,
+        sample_weight=None,
+        init_score=None,
+        eval_set=None,
+        eval_names: Optional[List[str]] = None,
+        eval_sample_weight=None,
+        eval_init_score=None,
+        eval_metric: Optional[Union[Callable, str, List[Union[Callable, str]]]] = None,
+        ray_params: Union[None, RayParams, Dict] = None,
+        _remote: Optional[bool] = None,
+        ray_dmatrix_params: Optional[Dict] = None,
+        **kwargs: Any,
+    ) -> "RayLGBMRegressor":
         return self._ray_fit(
             model_factory=LGBMRegressor,
             X=X,
@@ -358,18 +387,20 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
             ray_params=ray_params,
             _remote=_remote,
             ray_dmatrix_params=ray_dmatrix_params,
-            **kwargs)
+            **kwargs,
+        )
 
-    fit.__doc__ = _treat_method_doc(LGBMRegressor.fit.__doc__,
-                                    "\n\n    Returns")
+    fit.__doc__ = _treat_method_doc(LGBMRegressor.fit.__doc__, "\n\n    Returns")
 
-    def predict(self,
-                X,
-                *,
-                ray_params: Union[None, RayParams, Dict] = None,
-                _remote: Optional[bool] = None,
-                ray_dmatrix_params: Optional[Dict] = None,
-                **kwargs):
+    def predict(
+        self,
+        X,
+        *,
+        ray_params: Union[None, RayParams, Dict] = None,
+        _remote: Optional[bool] = None,
+        ray_dmatrix_params: Optional[Dict] = None,
+        **kwargs,
+    ):
         return self._ray_predict(
             X,
             model_factory=LGBMRegressor,
@@ -377,10 +408,10 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
             ray_params=ray_params,
             _remote=_remote,
             ray_dmatrix_params=ray_dmatrix_params,
-            **kwargs)
+            **kwargs,
+        )
 
-    predict.__doc__ = _treat_method_doc(LGBMRegressor.predict.__doc__,
-                                        "\n    **kwargs")
+    predict.__doc__ = _treat_method_doc(LGBMRegressor.predict.__doc__, "\n    **kwargs")
 
     def to_local(self) -> LGBMRegressor:
         """Create regular version of lightgbm.LGBMRegressor from the
@@ -395,4 +426,5 @@ class RayLGBMRegressor(LGBMRegressor, _RayLGBMModel):
 
 
 RayLGBMRegressor.__init__.__doc__ = _treat_estimator_doc(
-    RayLGBMRegressor.__init__.__doc__)
+    RayLGBMRegressor.__init__.__doc__
+)
