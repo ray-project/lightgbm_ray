@@ -1,19 +1,15 @@
+import unittest
 from typing import Tuple
 
-import unittest
-
-import numpy as np
-
 import lightgbm
+import numpy as np
+import ray
 from lightgbm.basic import _ConfigAliases
 from lightgbm.callback import CallbackEnv
-
-import ray
-
-from lightgbm_ray import RayDMatrix, train, RayParams, RayShardingMode
-from lightgbm_ray.tune import _TuneLGBMRank0Mixin
-
 from xgboost_ray.session import put_queue
+
+from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode, train
+from lightgbm_ray.tune import _TuneLGBMRank0Mixin
 
 
 def gradient(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
@@ -187,7 +183,8 @@ class LightGBMAPITest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

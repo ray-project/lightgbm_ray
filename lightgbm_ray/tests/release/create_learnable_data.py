@@ -1,8 +1,8 @@
 import argparse
-import numpy as np
 import os
-import pandas as pd
 
+import numpy as np
+import pandas as pd
 from sklearn.datasets import make_classification, make_regression
 
 if __name__ == "__main__":

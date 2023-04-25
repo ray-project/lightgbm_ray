@@ -2,8 +2,9 @@
 
 
 def readme_simple():
-    from lightgbm_ray import RayDMatrix, RayParams, train
     from sklearn.datasets import load_breast_cancer
+
+    from lightgbm_ray import RayDMatrix, RayParams, train
 
     train_x, train_y = load_breast_cancer(return_X_y=True)
     train_set = RayDMatrix(train_x, train_y)
@@ -29,9 +30,10 @@ def readme_simple():
 
 
 def readme_predict():
-    from lightgbm_ray import RayDMatrix, RayParams, predict
-    from sklearn.datasets import load_breast_cancer
     import lightgbm as lgbm
+    from sklearn.datasets import load_breast_cancer
+
+    from lightgbm_ray import RayDMatrix, RayParams, predict
 
     data, labels = load_breast_cancer(return_X_y=True)
 
@@ -44,8 +46,9 @@ def readme_predict():
 
 
 def readme_tune():
-    from lightgbm_ray import RayDMatrix, RayParams, train
     from sklearn.datasets import load_breast_cancer
+
+    from lightgbm_ray import RayDMatrix, RayParams, train
 
     num_actors = 2
     num_cpus_per_actor = 2

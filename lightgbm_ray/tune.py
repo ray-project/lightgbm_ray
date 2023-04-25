@@ -1,14 +1,11 @@
 # Tune imports.
+import logging
 from typing import Dict
 
 import ray
-import logging
-
-from ray.util.annotations import PublicAPI
-
 from lightgbm.basic import Booster
 from lightgbm.callback import CallbackEnv
-
+from ray.util.annotations import PublicAPI
 from xgboost_ray.session import put_queue
 from xgboost_ray.util import force_on_current_node
 
@@ -17,8 +14,12 @@ try:
     from ray.tune import is_session_enabled
     from ray.tune.integration.lightgbm import (
         TuneReportCallback as OrigTuneReportCallback,
-        _TuneCheckpointCallback as _OrigTuneCheckpointCallback,
+    )
+    from ray.tune.integration.lightgbm import (
         TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback,
+    )
+    from ray.tune.integration.lightgbm import (
+        _TuneCheckpointCallback as _OrigTuneCheckpointCallback,
     )
 
     TUNE_INSTALLED = True

@@ -5,8 +5,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from lightgbm_ray import RayDMatrix, RayParams, train
+
 from .higgs import download_higgs
-from lightgbm_ray import train, RayDMatrix, RayParams
 
 FILENAME_CSV = "HIGGS.csv.gz"
 FILENAME_PARQUET = "HIGGS.parquet"

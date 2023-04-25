@@ -1,9 +1,9 @@
-from contextlib import closing
-import socket
 import errno
 import gc
+import socket
+from contextlib import closing
 
-from lightgbm.basic import _safe_call, _LIB
+from lightgbm.basic import _LIB, _safe_call
 
 
 class lgbm_network_free:

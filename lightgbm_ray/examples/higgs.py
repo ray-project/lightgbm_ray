@@ -1,7 +1,7 @@
 import os
 import time
 
-from lightgbm_ray import train, RayDMatrix, RayParams
+from lightgbm_ray import RayDMatrix, RayParams, train
 
 FILENAME_CSV = "HIGGS.csv.gz"
 

@@ -1,11 +1,10 @@
 import argparse
 
+import ray
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
-import ray
-
-from lightgbm_ray import RayDMatrix, train, RayParams
+from lightgbm_ray import RayDMatrix, RayParams, train
 
 
 def main(cpus_per_actor, num_actors):

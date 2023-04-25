@@ -1,20 +1,17 @@
+import logging
 import os
 import shutil
 import tempfile
-
-import numpy as np
 import unittest
 
-import logging
-
 import lightgbm as lgbm
-
+import numpy as np
 import ray
 from ray.exceptions import RayActorError, RayTaskError
-
-from lightgbm_ray import RayParams, train, RayDMatrix, predict, RayShardingMode
-from lightgbm_ray.main import RayXGBoostTrainingError
 from xgboost_ray.callback import DistributedCallback
+
+from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode, predict, train
+from lightgbm_ray.main import RayXGBoostTrainingError
 
 # from sklearn.utils import shuffle
 
@@ -381,7 +378,8 @@ class LGBMRayEndToEndTestVoting(LGBMRayEndToEndTest):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

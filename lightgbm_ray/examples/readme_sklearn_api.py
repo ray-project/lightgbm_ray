@@ -1,7 +1,8 @@
 def readme_sklearn_api():
-    from lightgbm_ray import RayLGBMClassifier, RayParams
     from sklearn.datasets import load_breast_cancer
     from sklearn.model_selection import train_test_split
+
+    from lightgbm_ray import RayLGBMClassifier, RayParams
 
     seed = 42
 

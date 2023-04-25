@@ -1,14 +1,13 @@
 import argparse
 import os
 
-import lightgbm_ray
+import ray
+from ray import tune
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
-import ray
-from ray import tune
-
-from lightgbm_ray import train, RayDMatrix, RayParams
+import lightgbm_ray
+from lightgbm_ray import RayDMatrix, RayParams, train
 
 
 def train_breast_cancer(config, ray_params):

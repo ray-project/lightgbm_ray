@@ -2,12 +2,11 @@ import argparse
 
 import numpy as np
 import pandas as pd
-
 import ray
-
-from lightgbm_ray import RayDMatrix, train, RayParams
-from xgboost_ray.data_sources.modin import MODIN_INSTALLED
 from sklearn.utils import shuffle
+from xgboost_ray.data_sources.modin import MODIN_INSTALLED
+
+from lightgbm_ray import RayDMatrix, RayParams, train
 
 
 def main(cpus_per_actor, num_actors):

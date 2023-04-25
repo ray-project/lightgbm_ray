@@ -5,19 +5,20 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
-
 import ray
 from ray import tune
 
 try:
     from ray.tune.integration.lightgbm import (
         TuneReportCallback as OrigTuneReportCallback,
+    )
+    from ray.tune.integration.lightgbm import (
         TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback,
     )
 except ImportError:
     OrigTuneReportCallback = OrigTuneReportCheckpointCallback = None
 
-from lightgbm_ray import RayDMatrix, train, RayParams, RayShardingMode
+from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode, train
 from lightgbm_ray.tune import (
     TuneReportCallback,
     TuneReportCheckpointCallback,
@@ -193,7 +194,8 @@ class LightGBMRayTuneTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,7 +1,6 @@
 import os
 
 import pytest
-
 import ray
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -50,7 +49,8 @@ def test_simple_modin(start_client_server_5_cpus):
 
 
 if __name__ == "__main__":
-    import pytest  # noqa: F811
     import sys
+
+    import pytest  # noqa: F811
 
     sys.exit(pytest.main(["-v", __file__]))

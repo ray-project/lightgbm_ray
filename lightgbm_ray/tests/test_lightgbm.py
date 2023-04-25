@@ -28,23 +28,22 @@
 # License:
 # https://github.com/microsoft/LightGBM/blob/c3b9363d02564625332583e166e3ab3135f436e3/LICENSE
 
-import ray
-from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode
-from lightgbm_ray.sklearn import RayLGBMClassifier, RayLGBMRegressor
-
-import unittest
-from parameterized import parameterized
 import itertools
+import unittest
 
 import lightgbm as lgb
-
 import numpy as np
 import pandas as pd
+import ray
 import sklearn.utils.estimator_checks as sklearn_checks
+from parameterized import parameterized
 from sklearn.datasets import make_blobs, make_regression
-from sklearn.metrics import r2_score, accuracy_score
+from sklearn.metrics import accuracy_score, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.utils import _safe_indexing
+
+from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode
+from lightgbm_ray.sklearn import RayLGBMClassifier, RayLGBMRegressor
 
 data_output = [
     "array",
@@ -808,7 +807,8 @@ class LGBMRayTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

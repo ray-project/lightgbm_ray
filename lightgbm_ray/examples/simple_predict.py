@@ -1,11 +1,10 @@
 import os
 
+import lightgbm as lgbm
+import numpy as np
 from sklearn import datasets
 
-import lightgbm as lgbm
-from lightgbm_ray import RayDMatrix, predict, RayParams
-
-import numpy as np
+from lightgbm_ray import RayDMatrix, RayParams, predict
 
 
 def main():

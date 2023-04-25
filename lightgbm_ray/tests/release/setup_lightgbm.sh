@@ -5,7 +5,7 @@ pip install pytest
 pip uninstall -y lightgbm_ray || true
 
 # Install lightgbm package
-pip install -U ${LIGHTGBM_RAY_PACKAGE:-lightgbm_ray}
+pip install -U "${LIGHTGBM_RAY_PACKAGE:-lightgbm_ray}"
 
 # Create test dataset
 sudo mkdir -p /data || true

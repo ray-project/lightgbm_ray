@@ -1,7 +1,7 @@
 import argparse
-import numpy as np
 import os
 
+import numpy as np
 from xgboost_ray.tests.utils import create_parquet
 
 if __name__ == "__main__":
