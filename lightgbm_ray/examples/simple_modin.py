@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import ray
+from packaging.version import Version
 from sklearn.utils import shuffle
 from xgboost_ray.data_sources.modin import MODIN_INSTALLED
 
@@ -15,6 +16,14 @@ def main(cpus_per_actor, num_actors):
             "Modin is not installed or installed in a version that is not "
             "compatible with lightgbm_ray (< 0.9.0)."
         )
+        return
+
+    import modin
+
+    if Version(modin.__version__) < Version("0.16.0") and Version(
+        ray.__version__
+    ) >= Version("2.6.0"):
+        print("modin<=0.16.0 is not compatible with ray>=2.6.0.")
         return
 
     # Import modin after initializing Ray
