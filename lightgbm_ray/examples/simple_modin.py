@@ -2,8 +2,8 @@ import argparse
 
 import numpy as np
 import pandas as pd
-from packaging.version import Version
 import ray
+from packaging.version import Version
 from sklearn.utils import shuffle
 from xgboost_ray.data_sources.modin import MODIN_INSTALLED
 
