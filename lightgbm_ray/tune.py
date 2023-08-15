@@ -10,7 +10,7 @@ from xgboost_ray.session import put_queue
 from xgboost_ray.util import force_on_current_node
 
 try:
-    from ray import tune
+    from ray import train, tune
     from ray.tune import is_session_enabled
     from ray.tune.integration.lightgbm import (
         TuneReportCallback as OrigTuneReportCallback,
@@ -49,6 +49,10 @@ class _TuneLGBMRank0Mixin:
 
 
 if TUNE_INSTALLED:
+    if hasattr(train, "report"):
+        report = train.report
+    else:
+        report = tune.report
 
     class TuneReportCallback(_TuneLGBMRank0Mixin, OrigTuneReportCallback):
         def __call__(self, env: CallbackEnv) -> None:
@@ -56,7 +60,7 @@ if TUNE_INSTALLED:
                 return
             eval_result = self._get_eval_result(env)
             report_dict = self._get_report_dict(eval_result)
-            put_queue(lambda: tune.report(**report_dict))
+            put_queue(lambda: report(**report_dict))
 
     class _TuneCheckpointCallback(_TuneLGBMRank0Mixin, _OrigTuneCheckpointCallback):
         def __call__(self, env: CallbackEnv) -> None:
