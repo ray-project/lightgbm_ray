@@ -3,7 +3,7 @@ parameterized
 petastorm
 pytest
 pyarrow
-ray[tune, data]
+ray[tune, data, client]
 scikit-learn
 modin
 git+https://github.com/ray-project/xgboost_ray.git
@@ -11,4 +11,3 @@ git+https://github.com/ray-project/xgboost_ray.git
 #workaround for now
 protobuf<4.0.0
 tensorboardX==2.2
-aiohttp
