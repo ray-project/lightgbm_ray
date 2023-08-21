@@ -3,7 +3,7 @@ parameterized
 petastorm
 pytest
 pyarrow
-ray[tune, data]
+ray[tune, data, default]
 scikit-learn
 modin
 git+https://github.com/ray-project/xgboost_ray.git
