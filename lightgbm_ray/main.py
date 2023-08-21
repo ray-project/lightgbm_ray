@@ -253,7 +253,7 @@ class RayLightGBMActor(RayXGBoostActor):
             def _callback(env: CallbackEnv) -> None:
                 if not is_rank_0:
                     return
-                if (
+                if this.checkpoint_frequency > 0 and (
                     env.iteration == env.end_iteration - 1
                     or env.iteration % this.checkpoint_frequency == 0
                 ):
