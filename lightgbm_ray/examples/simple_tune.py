@@ -70,7 +70,7 @@ def main(cpus_per_actor, num_actors, num_samples):
 
     # Load the best model checkpoint.
     best_bst = lightgbm_ray.tune.load_model(
-        os.path.join(analysis.best_logdir, "tuned.lgbm")
+        os.path.join(analysis.best_trial.local_path, "tuned.lgbm")
     )
 
     best_bst.save_model("best_model.lgbm")
