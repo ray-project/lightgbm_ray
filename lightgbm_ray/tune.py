@@ -5,6 +5,7 @@ from typing import Dict
 import ray
 from lightgbm.basic import Booster
 from lightgbm.callback import CallbackEnv
+from ray.train._internal.session import get_session
 from ray.util.annotations import PublicAPI
 from xgboost_ray.session import put_queue
 from xgboost_ray.util import force_on_current_node
@@ -49,53 +50,68 @@ class _TuneLGBMRank0Mixin:
 
 
 if TUNE_INSTALLED:
-    if hasattr(train, "report"):
-        report = train.report
-    else:
-        report = tune.report
+    if not hasattr(train, "report"):
 
-    class TuneReportCallback(_TuneLGBMRank0Mixin, OrigTuneReportCallback):
-        def __call__(self, env: CallbackEnv) -> None:
-            if not self.is_rank_0:
-                return
-            eval_result = self._get_eval_result(env)
-            report_dict = self._get_report_dict(eval_result)
-            put_queue(lambda: report(**report_dict))
+        class TuneReportCallback(_TuneLGBMRank0Mixin, OrigTuneReportCallback):
+            def __call__(self, env: CallbackEnv) -> None:
+                if not self.is_rank_0:
+                    return
+                eval_result = self._get_eval_result(env)
+                report_dict = self._get_report_dict(eval_result)
+                put_queue(lambda: tune.report(**report_dict))
 
-    class _TuneCheckpointCallback(_TuneLGBMRank0Mixin, _OrigTuneCheckpointCallback):
-        def __call__(self, env: CallbackEnv) -> None:
-            if not self.is_rank_0:
-                return
-            put_queue(
-                lambda: self._create_checkpoint(
-                    env.model, env.iteration, self._filename, self._frequency
+        class _TuneCheckpointCallback(_TuneLGBMRank0Mixin, _OrigTuneCheckpointCallback):
+            def __call__(self, env: CallbackEnv) -> None:
+                if not self.is_rank_0:
+                    return
+                put_queue(
+                    lambda: self._create_checkpoint(
+                        env.model, env.iteration, self._filename, self._frequency
+                    )
                 )
-            )
 
-    class TuneReportCheckpointCallback(
-        _TuneLGBMRank0Mixin, OrigTuneReportCheckpointCallback
-    ):
-        _checkpoint_callback_cls = _TuneCheckpointCallback
-        _report_callback_cls = TuneReportCallback
+        class TuneReportCheckpointCallback(
+            _TuneLGBMRank0Mixin, OrigTuneReportCheckpointCallback
+        ):
+            _checkpoint_callback_cls = _TuneCheckpointCallback
+            _report_callback_cls = TuneReportCallback
 
-        @property
-        def is_rank_0(self) -> bool:
-            try:
-                return self._is_rank_0
-            except AttributeError:
-                return False
+            @property
+            def is_rank_0(self) -> bool:
+                try:
+                    return self._is_rank_0
+                except AttributeError:
+                    return False
 
-        @is_rank_0.setter
-        def is_rank_0(self, val: bool):
-            self._is_rank_0 = val
-            if hasattr(self, "_checkpoint"):
-                self._checkpoint.is_rank_0 = val
-            if hasattr(self, "_report"):
-                self._report.is_rank_0 = val
+            @is_rank_0.setter
+            def is_rank_0(self, val: bool):
+                self._is_rank_0 = val
+                if hasattr(self, "_checkpoint"):
+                    self._checkpoint.is_rank_0 = val
+                if hasattr(self, "_report"):
+                    self._report.is_rank_0 = val
+
+    else:
+
+        class TuneReportCheckpointCallback(
+            _TuneLGBMRank0Mixin, OrigTuneReportCheckpointCallback
+        ):
+            def __call__(self, env: CallbackEnv):
+                if self.is_rank_0:
+                    put_queue(
+                        lambda: super(TuneReportCheckpointCallback, self).__call__(
+                            env=env
+                        )
+                    )
+
+        class TuneReportCallback(_TuneLGBMRank0Mixin, OrigTuneReportCallback):
+            def __call__(self, env: CallbackEnv):
+                if self.is_rank_0:
+                    put_queue(lambda: super(TuneReportCallback, self).__call__(env=env))
 
 
 def _try_add_tune_callback(kwargs: Dict):
-    if TUNE_INSTALLED and is_session_enabled():
+    if TUNE_INSTALLED and is_session_enabled() or get_session():
         callbacks = kwargs.get("callbacks", []) or []
         new_callbacks = []
         has_tune_callback = False
@@ -121,10 +137,19 @@ def _try_add_tune_callback(kwargs: Dict):
                 )
                 has_tune_callback = True
             elif isinstance(cb, OrigTuneReportCheckpointCallback):
+                if getattr(cb, "_report", None):
+                    orig_metrics = cb._report._metrics
+                    orig_filename = cb._checkpoint._filename
+                    orig_frequency = cb._checkpoint._frequency
+                else:
+                    orig_metrics = cb._metrics
+                    orig_filename = cb._filename
+                    orig_frequency = cb._frequency
+
                 replace_cb = TuneReportCheckpointCallback(
-                    metrics=cb._report._metrics,
-                    filename=cb._checkpoint._filename,
-                    frequency=cb._checkpoint._frequency,
+                    metrics=orig_metrics,
+                    filename=orig_filename,
+                    frequency=orig_frequency,
                 )
                 new_callbacks.append(replace_cb)
                 logging.warning(
