@@ -10,7 +10,7 @@ from xgboost_ray.matrix import (
 from lightgbm_ray.main import RayParams, predict, train
 from lightgbm_ray.sklearn import RayLGBMClassifier, RayLGBMRegressor
 
-__version__ = "0.1.9"
+__version__ = "0.1.10"
 
 __all__ = [
     "__version__",
