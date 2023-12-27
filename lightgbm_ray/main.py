@@ -92,6 +92,8 @@ from xgboost_ray.session import put_queue
 
 from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
 
+RAY_TUNE_INSTALLED = True
+
 try:
     import ray.train
     import ray.tune
