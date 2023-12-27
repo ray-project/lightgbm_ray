@@ -8,15 +8,9 @@ import numpy as np
 import ray
 from ray import tune
 
-try:
-    from ray.tune.integration.lightgbm import (
-        TuneReportCallback as OrigTuneReportCallback,
-    )
-    from ray.tune.integration.lightgbm import (
-        TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback,
-    )
-except ImportError:
-    OrigTuneReportCallback = OrigTuneReportCheckpointCallback = None
+from ray.tune.integration.lightgbm import (
+    TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback
+)
 
 from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode, train
 from lightgbm_ray.tune import TuneReportCheckpointCallback, _try_add_tune_callback
@@ -105,15 +99,12 @@ class LightGBMRayTuneTest(unittest.TestCase):
             self.assertTrue(ray.util.client.ray.is_connected())
             self.testNumIters(init=False)
 
-    @unittest.skipIf(
-        OrigTuneReportCallback is None, "integration.lightgbmnot yet in ray.tune"
-    )
     def testReplaceTuneCheckpoints(self):
         """Test if ray.tune.integration.lightgbm callbacks are replaced"""
         ray.init(num_cpus=4)
 
         # Report and checkpointing callback
-        in_cp = [OrigTuneReportCheckpointCallback(metrics="met", filename="test")]
+        in_cp = [OrigTuneReportCheckpointCallback(metrics="met")]
         in_dict = {"callbacks": in_cp}
 
         with patch("ray.train.get_context") as mocked:
@@ -143,9 +134,6 @@ class LightGBMRayTuneTest(unittest.TestCase):
 
         self.assertTrue(os.path.exists(analysis.best_checkpoint.path))
 
-    @unittest.skipIf(
-        OrigTuneReportCallback is None, "integration.lightgbmnot yet in ray.tune"
-    )
     def testEndToEndCheckpointingOrigTune(self):
         ray.init(num_cpus=4)
         ray_params = RayParams(cpus_per_actor=2, num_actors=1)
