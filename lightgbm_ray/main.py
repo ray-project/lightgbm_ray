@@ -137,6 +137,12 @@ def _check_cpus_per_actor_at_least_2(cpus_per_actor: int, suppress_exception: bo
             )
 
 
+def _in_ray_tune_session() -> bool:
+    return (
+        RAY_TUNE_INSTALLED and ray.train.get_context().get_trial_resources() is not None
+    )
+
+
 def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
     if not LEGACY_MATRIX and isinstance(data, RayDeviceQuantileDMatrix):
         # If we only got a single data shard, create a list so we can
@@ -1058,8 +1064,7 @@ def train(
     os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
 
     if _remote is None:
-        in_ray_tune_session = RAY_TUNE_INSTALLED and ray.train.get_context()
-        _remote = _is_client_connected() and not in_ray_tune_session
+        _remote = _is_client_connected() and not _in_ray_tune_session()
 
     if not ray.is_initialized():
         ray.init()
@@ -1572,8 +1577,7 @@ def predict(
     os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
 
     if _remote is None:
-        in_ray_tune_session = RAY_TUNE_INSTALLED and ray.train.get_context()
-        _remote = _is_client_connected() and not in_ray_tune_session
+        _remote = _is_client_connected() and not _in_ray_tune_session()
 
     if not ray.is_initialized():
         ray.init()
