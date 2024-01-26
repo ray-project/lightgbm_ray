@@ -7,9 +7,8 @@ from unittest.mock import patch
 import numpy as np
 import ray
 from ray import tune
-
 from ray.tune.integration.lightgbm import (
-    TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback
+    TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback,
 )
 
 from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode, train

@@ -1,13 +1,12 @@
 import logging
 from typing import Dict
 
+import ray
 from lightgbm.basic import Booster
 from lightgbm.callback import CallbackEnv
+from ray.util.annotations import PublicAPI
 from xgboost_ray.session import put_queue
 from xgboost_ray.util import force_on_current_node
-
-import ray
-from ray.util.annotations import PublicAPI
 
 try:
     import ray.train
@@ -19,9 +18,7 @@ except (ImportError, ModuleNotFoundError) as e:
     ) from e
 
 
-from ray.tune.integration.lightgbm import (
-    TuneReportCallback as OrigTuneReportCallback,
-)
+from ray.tune.integration.lightgbm import TuneReportCallback as OrigTuneReportCallback
 from ray.tune.integration.lightgbm import (
     TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback,
 )

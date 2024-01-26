@@ -97,7 +97,7 @@ RAY_TUNE_INSTALLED = True
 try:
     import ray.train
     import ray.tune
-except (ImportError, ModuleNotFoundError) as e:
+except (ImportError, ModuleNotFoundError):
     RAY_TUNE_INSTALLED = False
 
 if RAY_TUNE_INSTALLED:
