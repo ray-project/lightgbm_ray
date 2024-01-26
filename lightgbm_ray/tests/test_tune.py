@@ -42,7 +42,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
             "num_boost_round": tune.choice([1, 3]),
         }
 
-        def train_func(ray_params, callbacks=None, **kwargs):
+        def train_func(ray_params, callbacks=None):
             def _inner_train(config):
                 train_set = RayDMatrix(x, y, sharding=RayShardingMode.BATCH)
                 train(
@@ -52,7 +52,6 @@ class LightGBMRayTuneTest(unittest.TestCase):
                     num_boost_round=config["num_boost_round"],
                     evals=[(train_set, "train")],
                     callbacks=callbacks,
-                    **kwargs
                 )
 
             return _inner_train
