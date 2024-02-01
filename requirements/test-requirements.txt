@@ -2,7 +2,7 @@ packaging
 parameterized
 petastorm
 pytest
-pyarrow
+pyarrow<15.0.0
 ray[tune, data, default]
 scikit-learn
 modin
