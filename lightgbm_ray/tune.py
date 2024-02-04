@@ -55,7 +55,7 @@ class TuneReportCallback(_TuneLGBMRank0Mixin, OrigTuneReportCallback):
         # TODO(justinvyu): [code_removal] Remove in Ray 2.11.
         raise DeprecationWarning(
             "`TuneReportCallback` is deprecated. "
-            "Use `xgboost_ray.tune.TuneReportCheckpointCallback` instead."
+            "Use `ray.tune.integration.lightgbm.TuneReportCheckpointCallback` instead."
         )
 
 
