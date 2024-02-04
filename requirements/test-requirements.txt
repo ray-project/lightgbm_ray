@@ -2,10 +2,13 @@ packaging
 parameterized
 petastorm
 pytest
-pyarrow
+pyarrow<15.0.0
 ray[tune, data, default]
 scikit-learn
-modin
+# modin==0.23.1.post0 is not compatible with lightgbm_ray py38
+modin<=0.23.1; python_version == '3.8'
+# modin==0.26.0 is not compatible with lightgbm_ray py39+
+modin<0.26.0; python_version > '3.8'
 git+https://github.com/ray-project/xgboost_ray.git
 
 #workaround for now

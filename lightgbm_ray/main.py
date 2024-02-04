@@ -86,13 +86,25 @@ from xgboost_ray.main import (
     concat_dataframes,
     force_on_current_node,
     get_current_placement_group,
-    is_session_enabled,
     pickle,
 )
 from xgboost_ray.session import put_queue
 
-from lightgbm_ray.tune import _try_add_tune_callback, _TuneLGBMRank0Mixin
 from lightgbm_ray.util import find_free_port, is_port_free, lgbm_network_free
+
+RAY_TUNE_INSTALLED = True
+
+try:
+    import ray.train
+    import ray.tune
+except (ImportError, ModuleNotFoundError):
+    RAY_TUNE_INSTALLED = False
+
+if RAY_TUNE_INSTALLED:
+    from lightgbm_ray.tune import _try_add_tune_callback, _TuneLGBMRank0Mixin
+else:
+    _try_add_tune_callback = _TuneLGBMRank0Mixin = None
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -123,6 +135,12 @@ def _check_cpus_per_actor_at_least_2(cpus_per_actor: int, suppress_exception: bo
                 "exception by setting allow_less_than_two_cpus "
                 "to True."
             )
+
+
+def _in_ray_tune_session() -> bool:
+    return (
+        RAY_TUNE_INSTALLED and ray.train.get_context().get_trial_resources() is not None
+    )
 
 
 def _get_data_dict(data: RayDMatrix, param: Dict) -> Dict:
@@ -411,9 +429,10 @@ class RayLightGBMActor(RayXGBoostActor):
         callbacks.append(self._save_checkpoint_callback(is_rank_0=return_bst))
         callbacks.append(self._stop_callback(is_rank_0=return_bst))
         callbacks.append(record_evaluation(evals_result))
-        for callback in callbacks:
-            if isinstance(callback, _TuneLGBMRank0Mixin):
-                callback.is_rank_0 = return_bst
+        if RAY_TUNE_INSTALLED:
+            for callback in callbacks:
+                if isinstance(callback, _TuneLGBMRank0Mixin):
+                    callback.is_rank_0 = return_bst
         kwargs["callbacks"] = callbacks
 
         if LIGHTGBM_VERSION < Version("3.3.0"):
@@ -1045,7 +1064,7 @@ def train(
     os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
 
     if _remote is None:
-        _remote = _is_client_connected() and not is_session_enabled()
+        _remote = _is_client_connected() and not _in_ray_tune_session()
 
     if not ray.is_initialized():
         ray.init()
@@ -1153,7 +1172,11 @@ def train(
             "`dtrain = RayDMatrix(data=data, label=label)`.".format(type(dtrain))
         )
 
-    added_tune_callback = _try_add_tune_callback(kwargs)
+    if RAY_TUNE_INSTALLED:
+        added_tune_callback = _try_add_tune_callback(kwargs)
+    else:
+        added_tune_callback = False
+
     # LightGBM currently does not support elastic training.
     if ray_params.elastic_training:
         raise ValueError(
@@ -1270,7 +1293,7 @@ def train(
                 evals.append((valid_data, f"valid_{i}"))
 
     if evals:
-        for (deval, _name) in evals:
+        for deval, _name in evals:
             if not isinstance(deval, RayDMatrix):
                 raise ValueError(
                     "Evaluation data must be a `RayDMatrix`, got " f"{type(deval)}."
@@ -1554,7 +1577,7 @@ def predict(
     os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
 
     if _remote is None:
-        _remote = _is_client_connected() and not is_session_enabled()
+        _remote = _is_client_connected() and not _in_ray_tune_session()
 
     if not ray.is_initialized():
         ray.init()

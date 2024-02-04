@@ -2,35 +2,17 @@ import os
 import shutil
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import ray
 from ray import tune
-
-try:
-    from ray.tune.integration.lightgbm import (
-        TuneReportCallback as OrigTuneReportCallback,
-    )
-    from ray.tune.integration.lightgbm import (
-        TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback,
-    )
-except ImportError:
-    OrigTuneReportCallback = OrigTuneReportCheckpointCallback = None
-
-from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode, train
-from lightgbm_ray.tune import (
-    TuneReportCallback,
-    TuneReportCheckpointCallback,
-    _try_add_tune_callback,
+from ray.tune.integration.lightgbm import (
+    TuneReportCheckpointCallback as OrigTuneReportCheckpointCallback,
 )
 
-try:
-    from ray.air import Checkpoint
-except Exception:
-
-    class Checkpoint:
-        pass
+from lightgbm_ray import RayDMatrix, RayParams, RayShardingMode, train
+from lightgbm_ray.tune import TuneReportCheckpointCallback, _try_add_tune_callback
 
 
 class LightGBMRayTuneTest(unittest.TestCase):
@@ -59,8 +41,8 @@ class LightGBMRayTuneTest(unittest.TestCase):
             "num_boost_round": tune.choice([1, 3]),
         }
 
-        def train_func(ray_params, callbacks=None, **kwargs):
-            def _inner_train(config, checkpoint_dir):
+        def train_func(ray_params, callbacks=None):
+            def _inner_train(config):
                 train_set = RayDMatrix(x, y, sharding=RayShardingMode.BATCH)
                 train(
                     config["lgbm"],
@@ -69,7 +51,6 @@ class LightGBMRayTuneTest(unittest.TestCase):
                     num_boost_round=config["num_boost_round"],
                     evals=[(train_set, "train")],
                     callbacks=callbacks,
-                    **kwargs
                 )
 
             return _inner_train
@@ -116,41 +97,22 @@ class LightGBMRayTuneTest(unittest.TestCase):
             self.assertTrue(ray.util.client.ray.is_connected())
             self.testNumIters(init=False)
 
-    @unittest.skipIf(
-        OrigTuneReportCallback is None, "integration.lightgbmnot yet in ray.tune"
-    )
     def testReplaceTuneCheckpoints(self):
         """Test if ray.tune.integration.lightgbm callbacks are replaced"""
         ray.init(num_cpus=4)
-        # Report callback
-        in_cp = [OrigTuneReportCallback(metrics="met")]
-        in_dict = {"callbacks": in_cp}
-
-        with patch("lightgbm_ray.tune.is_session_enabled") as mocked:
-            mocked.return_value = True
-            _try_add_tune_callback(in_dict)
-
-        replaced = in_dict["callbacks"][0]
-        self.assertTrue(isinstance(replaced, TuneReportCallback))
-        self.assertSequenceEqual(replaced._metrics, ["met"])
 
         # Report and checkpointing callback
-        in_cp = [OrigTuneReportCheckpointCallback(metrics="met", filename="test")]
+        in_cp = [OrigTuneReportCheckpointCallback(metrics="met")]
         in_dict = {"callbacks": in_cp}
 
-        with patch("lightgbm_ray.tune.is_session_enabled") as mocked:
-            mocked.return_value = True
+        with patch("ray.train.get_context") as mocked:
+            mocked.return_value = MagicMock(return_value=True)
             _try_add_tune_callback(in_dict)
 
         replaced = in_dict["callbacks"][0]
         self.assertTrue(isinstance(replaced, TuneReportCheckpointCallback))
 
-        if getattr(replaced, "_report", None):
-            self.assertSequenceEqual(replaced._report._metrics, ["met"])
-            self.assertEqual(replaced._checkpoint._filename, "test")
-        else:
-            self.assertSequenceEqual(replaced._metrics, ["met"])
-            self.assertEqual(replaced._filename, "test")
+        self.assertSequenceEqual(replaced._metrics, ["met"])
 
     def testEndToEndCheckpointing(self):
         ray.init(num_cpus=4)
@@ -168,14 +130,8 @@ class LightGBMRayTuneTest(unittest.TestCase):
             local_dir=self.experiment_dir,
         )
 
-        if isinstance(analysis.best_checkpoint, Checkpoint):
-            self.assertTrue(analysis.best_checkpoint)
-        else:
-            self.assertTrue(os.path.exists(analysis.best_checkpoint))
+        self.assertTrue(os.path.exists(analysis.best_checkpoint.path))
 
-    @unittest.skipIf(
-        OrigTuneReportCallback is None, "integration.lightgbmnot yet in ray.tune"
-    )
     def testEndToEndCheckpointingOrigTune(self):
         ray.init(num_cpus=4)
         ray_params = RayParams(cpus_per_actor=2, num_actors=1)
@@ -192,10 +148,7 @@ class LightGBMRayTuneTest(unittest.TestCase):
             local_dir=self.experiment_dir,
         )
 
-        if isinstance(analysis.best_checkpoint, Checkpoint):
-            self.assertTrue(analysis.best_checkpoint)
-        else:
-            self.assertTrue(os.path.exists(analysis.best_checkpoint))
+        self.assertTrue(os.path.exists(analysis.best_checkpoint.path))
 
 
 if __name__ == "__main__":
